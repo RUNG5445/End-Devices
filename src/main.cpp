@@ -18,7 +18,7 @@ Adafruit_Sensor *aht_humidity, *aht_temp;
 int SyncWord = 241;
 int TxPower = 20;
 long freq = 923E6;
-double interval = 1; 
+double interval = 1;
 #define NodeName "Node1"
 #define timeout 10000
 
@@ -82,13 +82,14 @@ void setup()
   unsigned long startTime = millis();
 
   // Initialize AHT sensor
-  Serial.println("Adafruit AHT10/AHT20 test!");
   while (!aht.begin())
   {
     Serial.println("Failed to find AHT10/AHT20 chip");
     delay(10);
   }
-  Serial.println("AHT10/AHT20 Found!");
+  Serial.println("AHT10/AHT20 Initialized!");
+  delay(200);
+
   aht_temp = aht.getTemperatureSensor();
   aht_humidity = aht.getHumiditySensor();
 
@@ -101,7 +102,7 @@ void setup()
     Serial.println("Waiting for LoRa module...");
     delay(500);
   }
-  Serial.println("LoRa Initializing OK!");
+  Serial.println("LoRa Initialized!");
 
   // Get sensor readings
   sensors_event_t humidity;
