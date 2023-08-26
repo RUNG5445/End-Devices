@@ -18,7 +18,7 @@ Adafruit_Sensor *aht_humidity, *aht_temp;
 int SyncWord = 241;
 int TxPower = 20;
 long freq = 923E6;
-double interval = 1; // Corrected the variable name
+double interval = 1; 
 #define NodeName "Node1"
 #define timeout 10000
 
