@@ -52,6 +52,7 @@ void sleep(float sec)
   Serial.print("Duration: ");
   Serial.print(sec / 60);
   Serial.println(" minutes");
+
   // Go to sleep now
   Serial.print("Going to sleep for ");
   Serial.print((interval - min_d));
