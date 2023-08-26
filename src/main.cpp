@@ -20,7 +20,7 @@ Adafruit_Sensor *aht_humidity, *aht_temp;
 int SyncWord = 241;
 int TxPower = 20;
 long freq = 923E6;
-double intreval = 1;
+double interval = 1; // Corrected the variable name
 
 // Function to create a JSON string
 String createJsonString(float tempfl, float humifl)
@@ -43,16 +43,16 @@ void sleep(float sec)
 {
   Serial.println("\n----------   Start of sleep()   ----------\n");
   double min_d = sec / 60;
-  // Set wakeup time to 10 minutes
-  esp_sleep_enable_timer_wakeup((intreval - min_d) * 60 * 1000000);
+  // Set wakeup time
+  esp_sleep_enable_timer_wakeup((interval - min_d) * 60 * 1000000);
 
   // Print the duration in minutes to the serial monitor
-  Serial.print("Duration : ");
+  Serial.print("Duration: ");
   Serial.print(sec / 60);
   Serial.println(" minutes");
   // Go to sleep now
   Serial.print("Going to sleep for ");
-  Serial.print((intreval - min_d));
+  Serial.print((interval - min_d));
   Serial.println(" minutes");
   Serial.println("\n----------   End of sleep()   ----------\n");
   esp_deep_sleep_start();
@@ -60,7 +60,6 @@ void sleep(float sec)
 
 void blinkLED(int numBlinks, int blinkDuration = 500)
 {
-
   for (int i = 0; i < numBlinks; i++)
   {
     digitalWrite(LED, HIGH);
@@ -74,8 +73,6 @@ void setup()
 {
   Serial.begin(115200);
   pinMode(LED, OUTPUT);
-  
-  //Start timer
   unsigned long startTime = millis();
 
   // Initialize AHT sensor
@@ -109,7 +106,7 @@ void setup()
 
   // Create JSON string from sensor readings
   String jsonOutput = createJsonString(temp.temperature, humidity.relative_humidity);
-  Serial.println("Packet send : ");
+  Serial.println("Packet send:");
   Serial.println(jsonOutput);
 
   // Send JSON data via LoRa
@@ -121,9 +118,9 @@ void setup()
 
   Serial.println("Switching to receiving state...");
 
-  // Enter receiving state for 10 seconds
-  long startTime = millis();
-  while (millis() - startTime < 10000)
+  // Enter receiving state
+  unsigned long recvstartTime = millis();
+  while (millis() - recvstartTime < timeout)
   {
     int packetSize = LoRa.parsePacket();
     if (packetSize)
@@ -137,7 +134,7 @@ void setup()
     }
   }
 
-  // Put the ESP into deep sleep for 5 seconds
+  // Put the ESP into deep sleep for a calculated duration
   unsigned long endTime = millis();
   unsigned long duration = endTime - startTime;
   float durationSeconds = duration / 1000.0;
