@@ -16,6 +16,12 @@ Adafruit_Sensor *aht_humidity, *aht_temp;
 #define NodeName "Node1"
 #define timeout 10000
 
+// LoRa configuration
+int SyncWord = 241;
+int TxPower = 20;
+long freq = 923E6;
+double intreval = 1;
+
 // Function to create a JSON string
 String createJsonString(float tempfl, float humifl)
 {
@@ -31,6 +37,25 @@ String createJsonString(float tempfl, float humifl)
   String jsonString;
   serializeJson(doc, jsonString);
   return jsonString;
+}
+
+void sleep(float sec)
+{
+  Serial.println("\n----------   Start of sleep()   ----------\n");
+  double min_d = sec / 60;
+  // Set wakeup time to 10 minutes
+  esp_sleep_enable_timer_wakeup((intreval - min_d) * 60 * 1000000);
+
+  // Print the duration in minutes to the serial monitor
+  Serial.print("Duration : ");
+  Serial.print(sec / 60);
+  Serial.println(" minutes");
+  // Go to sleep now
+  Serial.print("Going to sleep for ");
+  Serial.print((intreval - min_d));
+  Serial.println(" minutes");
+  Serial.println("\n----------   End of sleep()   ----------\n");
+  esp_deep_sleep_start();
 }
 
 void blinkLED(int numBlinks, int blinkDuration = 500)
@@ -49,6 +74,9 @@ void setup()
 {
   Serial.begin(115200);
   pinMode(LED, OUTPUT);
+  
+  //Start timer
+  unsigned long startTime = millis();
 
   // Initialize AHT sensor
   Serial.println("Adafruit AHT10/AHT20 test!");
@@ -63,18 +91,15 @@ void setup()
 
   // Initialize LoRa module
   LoRa.setPins(ss, rst, dio0);
-  LoRa.setSyncWord(0xF1);
-  LoRa.setTxPower(20);
-  while (!LoRa.begin(923E6))
+  LoRa.setSyncWord(SyncWord);
+  LoRa.setTxPower(TxPower);
+  while (!LoRa.begin(freq))
   {
     Serial.println("Waiting for LoRa module...");
     delay(500);
   }
   Serial.println("LoRa Initializing OK!");
-}
 
-void loop()
-{
   // Get sensor readings
   sensors_event_t humidity;
   sensors_event_t temp;
@@ -108,11 +133,20 @@ void loop()
       {
         Serial.write(LoRa.read());
       }
-      break; // Exit the loop after printing the received packet
+      break;
     }
   }
 
-  Serial.println("Sleeping...");
   // Put the ESP into deep sleep for 5 seconds
-  ESP.deepSleep(5000000);
+  unsigned long endTime = millis();
+  unsigned long duration = endTime - startTime;
+  float durationSeconds = duration / 1000.0;
+
+  // Put the device to sleep for the calculated duration
+  sleep(durationSeconds);
+}
+
+void loop()
+{
+  delay(100);
 }
