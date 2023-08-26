@@ -13,14 +13,14 @@ Adafruit_Sensor *aht_humidity, *aht_temp;
 #define ss 5
 #define rst 17
 #define dio0 16
-#define NodeName "Node1"
-#define timeout 10000
 
 // LoRa configuration
 int SyncWord = 241;
 int TxPower = 20;
 long freq = 923E6;
 double interval = 1; // Corrected the variable name
+#define NodeName "Node1"
+#define timeout 10000
 
 // Function to create a JSON string
 String createJsonString(float tempfl, float humifl)
@@ -64,6 +64,7 @@ void sleep(float sec)
 void blinkLED(int numBlinks, int blinkDuration = 500)
 {
   Serial.println("\n----------   Start of blinkLED()   ----------\n");
+  Serial.println("LED blinking...");
   for (int i = 0; i < numBlinks; i++)
   {
     digitalWrite(LED, HIGH);
@@ -111,8 +112,8 @@ void setup()
 
   // Create JSON string from sensor readings
   String jsonOutput = createJsonString(temp.temperature, humidity.relative_humidity);
-  Serial.println("Packet send:");
-  Serial.println(jsonOutput);
+  Serial.println("Packet send: ");
+  Serial.print(jsonOutput);
 
   // Send JSON data via LoRa
   blinkLED(3, 300);
