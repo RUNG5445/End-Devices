@@ -25,6 +25,7 @@ double interval = 1; // Corrected the variable name
 // Function to create a JSON string
 String createJsonString(float tempfl, float humifl)
 {
+  Serial.println("\n----------   Start of createJsonString()   ----------\n");
   StaticJsonDocument<512> doc;
 
   // Generate a random packet ID
@@ -36,6 +37,7 @@ String createJsonString(float tempfl, float humifl)
 
   String jsonString;
   serializeJson(doc, jsonString);
+  Serial.println("\n----------   End of createJsonString()   ----------\n");
   return jsonString;
 }
 
@@ -60,6 +62,7 @@ void sleep(float sec)
 
 void blinkLED(int numBlinks, int blinkDuration = 500)
 {
+  Serial.println("\n----------   Start of blinkLED()   ----------\n");
   for (int i = 0; i < numBlinks; i++)
   {
     digitalWrite(LED, HIGH);
@@ -67,6 +70,7 @@ void blinkLED(int numBlinks, int blinkDuration = 500)
     digitalWrite(LED, LOW);
     delay(blinkDuration);
   }
+  Serial.println("\n----------   End of blinkLED()   ----------\n");
 }
 
 void setup()
