@@ -15,10 +15,16 @@ Adafruit_Sensor *aht_humidity, *aht_temp;
 #define dio0 16
 
 // LoRa configuration
-int SyncWord = 241;
+// RTC_DATA_ATTR int SyncWord = 241;
+// RTC_DATA_ATTR int TxPower = 20;
+// RTC_DATA_ATTR long freq = 923E6;
+// RTC_DATA_ATTR double interval = 1;
+
+int SyncWord = 0xF1;
+int recvSyncWord = 5;
 int TxPower = 20;
 long freq = 923E6;
-double interval = 1;
+double interval = 0.1;
 #define NodeName "Node1"
 #define timeout 10000
 
@@ -112,19 +118,20 @@ void setup()
   delay(100);
 
   // Create JSON string from sensor readings
+  delay(3000);
   String jsonOutput = createJsonString(temp.temperature, humidity.relative_humidity);
-  Serial.println("Packet send: ");
-  Serial.print(jsonOutput);
+  Serial.print("Packet send: ");
+  Serial.println(jsonOutput);
 
   // Send JSON data via LoRa
   blinkLED(3, 300);
   LoRa.beginPacket();
   LoRa.print(jsonOutput);
   LoRa.endPacket();
-  delay(1000);
+  delay(2000);
 
   Serial.println("Switching to receiving state...");
-
+  LoRa.setSyncWord(0xF2);
   // Enter receiving state
   unsigned long recvstartTime = millis();
   while (millis() - recvstartTime < timeout)
@@ -136,7 +143,8 @@ void setup()
       while (LoRa.available())
       {
         Serial.write(LoRa.read());
-      }
+            }
+      delay(10000);
       break;
     }
   }
