@@ -15,16 +15,15 @@ Adafruit_Sensor *aht_humidity, *aht_temp;
 #define dio0 16
 
 // LoRa configuration
-// RTC_DATA_ATTR int SyncWord = 241;
-// RTC_DATA_ATTR int TxPower = 20;
-// RTC_DATA_ATTR long freq = 923E6;
-// RTC_DATA_ATTR double interval = 1;
+RTC_DATA_ATTR int SyncWord;
+RTC_DATA_ATTR int TxPower;
+RTC_DATA_ATTR long freq;
+RTC_DATA_ATTR double interval;
 
-int SyncWord = 0xF1;
-int recvSyncWord = 5;
-int TxPower = 20;
-long freq = 923E6;
-double interval = 0.1;
+// int SyncWord = 0xF1;
+// int TxPower = 20;
+// long freq = 923E6;
+// double interval = 0.1;
 #define NodeName "Node1"
 #define timeout 10000
 
@@ -81,6 +80,39 @@ void blinkLED(int numBlinks, int blinkDuration = 500)
   Serial.println("\n----------   End of blinkLED()   ----------\n");
 }
 
+void processJsonInput(const char *jsonInput)
+{
+  StaticJsonDocument<512> doc;
+  DeserializationError error = deserializeJson(doc, jsonInput);
+  if (error)
+  {
+    Serial.print("Parsing failed: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  if (doc["SyncWord"] != SyncWord)
+  {
+    SyncWord = doc["SyncWord"];
+    Serial.print("SyncWord changed");
+  }
+  if (doc["TxPower"] != TxPower)
+  {
+    TxPower = doc["TxPower"];
+    Serial.print("TxPower changed");
+  }
+  if (doc["freq"] != freq)
+  {
+    freq = doc["freq"];
+    Serial.print("TxPower changed");
+  }
+  if (doc["interval"] != interval)
+  {
+    interval = doc["interval"];
+    Serial.print("interval changed");
+  }
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -100,9 +132,27 @@ void setup()
   aht_humidity = aht.getHumiditySensor();
 
   // Initialize LoRa module
+  Serial.print("LoRa");
+  Serial.println(SyncWord, HEX); // Print SyncWord in hexadecimal format
+  Serial.print("TxPower: ");
+  Serial.println(TxPower);
+  Serial.print("freq: ");
+  Serial.println(freq);
+  Serial.print("interval: ");
+  Serial.println(interval);
+
+  if (SyncWord == 0 || TxPower == 0 || freq == 0 || interval == 0)
+  {
+    SyncWord = 0xF1;
+    TxPower = 20;
+    freq = 923E6;
+    interval = 1;
+    Serial.print("no value use default");
+  }
+
   LoRa.setPins(ss, rst, dio0);
-  LoRa.setSyncWord(SyncWord);
-  LoRa.setTxPower(TxPower);
+  LoRa.setSyncWord(241);
+  LoRa.setTxPower(TxPower); 
   while (!LoRa.begin(freq))
   {
     Serial.println("Waiting for LoRa module...");
@@ -136,16 +186,45 @@ void setup()
   unsigned long recvstartTime = millis();
   while (millis() - recvstartTime < timeout)
   {
+
     int packetSize = LoRa.parsePacket();
     if (packetSize)
     {
-      Serial.println("Packet received:");
+      Serial.print("Received packet '");
+
+      char LoRaData[255];
+      int dataIndex = 0;
+
       while (LoRa.available())
       {
-        Serial.write(LoRa.read());
-            }
-      delay(10000);
-      break;
+        char receivedChar = LoRa.read();
+        Serial.print(receivedChar);
+
+        LoRaData[dataIndex] = receivedChar;
+        dataIndex++;
+
+        if (dataIndex >= sizeof(LoRaData) - 1)
+        {
+          LoRaData[dataIndex] = '\0';
+          break;
+        }
+
+        if (dataIndex == 1 && receivedChar != '{')
+        {
+          dataIndex = 0;
+          break;
+        }
+      }
+
+      Serial.print("' with RSSI ");
+      Serial.println(LoRa.packetRssi());
+
+      if (dataIndex > 0)
+      {
+        LoRaData[dataIndex] = '\0';
+        processJsonInput(LoRaData);
+        delay(3000);
+      }
     }
   }
 
