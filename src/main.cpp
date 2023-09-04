@@ -13,12 +13,24 @@ Adafruit_Sensor *aht_humidity, *aht_temp;
 #define ss 5
 #define rst 17
 #define dio0 16
+
+// LoRa configuration
+RTC_DATA_ATTR int SyncWord;
+RTC_DATA_ATTR int TxPower;
+RTC_DATA_ATTR long freq;
+RTC_DATA_ATTR double interval;
+
+// int SyncWord = 0xF1;
+// int TxPower = 20;
+// long freq = 923E6;
+// double interval = 0.1;
 #define NodeName "Node1"
 #define timeout 10000
 
 // Function to create a JSON string
 String createJsonString(float tempfl, float humifl)
 {
+  Serial.println("\n----------   Start of createJsonString()   ----------\n");
   StaticJsonDocument<512> doc;
 
   // Generate a random packet ID
@@ -30,12 +42,34 @@ String createJsonString(float tempfl, float humifl)
 
   String jsonString;
   serializeJson(doc, jsonString);
+  Serial.println("\n----------   End of createJsonString()   ----------\n");
   return jsonString;
+}
+
+void sleep(float sec)
+{
+  Serial.println("\n----------   Start of sleep()   ----------\n");
+  double min_d = sec / 60;
+  // Set wakeup time
+  esp_sleep_enable_timer_wakeup((interval - min_d) * 60 * 1000000);
+
+  // Print the duration in minutes to the serial monitor
+  Serial.print("Duration: ");
+  Serial.print(sec / 60);
+  Serial.println(" minutes");
+
+  // Go to sleep now
+  Serial.print("Going to sleep for ");
+  Serial.print((interval - min_d));
+  Serial.println(" minutes");
+  Serial.println("\n----------   End of sleep()   ----------\n");
+  esp_deep_sleep_start();
 }
 
 void blinkLED(int numBlinks, int blinkDuration = 500)
 {
-
+  Serial.println("\n----------   Start of blinkLED()   ----------\n");
+  Serial.println("LED blinking...");
   for (int i = 0; i < numBlinks; i++)
   {
     digitalWrite(LED, HIGH);
@@ -43,38 +77,89 @@ void blinkLED(int numBlinks, int blinkDuration = 500)
     digitalWrite(LED, LOW);
     delay(blinkDuration);
   }
+  Serial.println("\n----------   End of blinkLED()   ----------\n");
+}
+
+void processJsonInput(const char *jsonInput)
+{
+  StaticJsonDocument<512> doc;
+  DeserializationError error = deserializeJson(doc, jsonInput);
+  if (error)
+  {
+    Serial.print("Parsing failed: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  if (doc["SyncWord"] != SyncWord)
+  {
+    SyncWord = doc["SyncWord"];
+    Serial.print("SyncWord changed");
+  }
+  if (doc["TxPower"] != TxPower)
+  {
+    TxPower = doc["TxPower"];
+    Serial.print("TxPower changed");
+  }
+  if (doc["freq"] != freq)
+  {
+    freq = doc["freq"];
+    Serial.print("TxPower changed");
+  }
+  if (doc["interval"] != interval)
+  {
+    interval = doc["interval"];
+    Serial.print("interval changed");
+  }
 }
 
 void setup()
 {
   Serial.begin(115200);
   pinMode(LED, OUTPUT);
+  unsigned long startTime = millis();
 
   // Initialize AHT sensor
-  Serial.println("Adafruit AHT10/AHT20 test!");
   while (!aht.begin())
   {
     Serial.println("Failed to find AHT10/AHT20 chip");
     delay(10);
   }
-  Serial.println("AHT10/AHT20 Found!");
+  Serial.println("AHT10/AHT20 Initialized!");
+  delay(200);
+
   aht_temp = aht.getTemperatureSensor();
   aht_humidity = aht.getHumiditySensor();
 
   // Initialize LoRa module
+  Serial.print("LoRa");
+  Serial.println(SyncWord, HEX); // Print SyncWord in hexadecimal format
+  Serial.print("TxPower: ");
+  Serial.println(TxPower);
+  Serial.print("freq: ");
+  Serial.println(freq);
+  Serial.print("interval: ");
+  Serial.println(interval);
+
+  if (SyncWord == 0 || TxPower == 0 || freq == 0 || interval == 0)
+  {
+    SyncWord = 0xF1;
+    TxPower = 20;
+    freq = 923E6;
+    interval = 1;
+    Serial.print("no value use default");
+  }
+
   LoRa.setPins(ss, rst, dio0);
-  LoRa.setSyncWord(0xF1);
-  LoRa.setTxPower(20);
-  while (!LoRa.begin(923E6))
+  LoRa.setSyncWord(241);
+  LoRa.setTxPower(TxPower); 
+  while (!LoRa.begin(freq))
   {
     Serial.println("Waiting for LoRa module...");
     delay(500);
   }
-  Serial.println("LoRa Initializing OK!");
-}
+  Serial.println("LoRa Initialized!");
 
-void loop()
-{
   // Get sensor readings
   sensors_event_t humidity;
   sensors_event_t temp;
@@ -83,8 +168,9 @@ void loop()
   delay(100);
 
   // Create JSON string from sensor readings
+  delay(3000);
   String jsonOutput = createJsonString(temp.temperature, humidity.relative_humidity);
-  Serial.println("Packet send : ");
+  Serial.print("Packet send: ");
   Serial.println(jsonOutput);
 
   // Send JSON data via LoRa
@@ -92,27 +178,66 @@ void loop()
   LoRa.beginPacket();
   LoRa.print(jsonOutput);
   LoRa.endPacket();
-  delay(1000);
+  delay(2000);
 
   Serial.println("Switching to receiving state...");
-
-  // Enter receiving state for 10 seconds
-  long startTime = millis();
-  while (millis() - startTime < 10000)
+  LoRa.setSyncWord(0xF2);
+  // Enter receiving state
+  unsigned long recvstartTime = millis();
+  while (millis() - recvstartTime < timeout)
   {
+
     int packetSize = LoRa.parsePacket();
     if (packetSize)
     {
-      Serial.println("Packet received:");
+      Serial.print("Received packet '");
+
+      char LoRaData[255];
+      int dataIndex = 0;
+
       while (LoRa.available())
       {
-        Serial.write(LoRa.read());
+        char receivedChar = LoRa.read();
+        Serial.print(receivedChar);
+
+        LoRaData[dataIndex] = receivedChar;
+        dataIndex++;
+
+        if (dataIndex >= sizeof(LoRaData) - 1)
+        {
+          LoRaData[dataIndex] = '\0';
+          break;
+        }
+
+        if (dataIndex == 1 && receivedChar != '{')
+        {
+          dataIndex = 0;
+          break;
+        }
       }
-      break; // Exit the loop after printing the received packet
+
+      Serial.print("' with RSSI ");
+      Serial.println(LoRa.packetRssi());
+
+      if (dataIndex > 0)
+      {
+        LoRaData[dataIndex] = '\0';
+        processJsonInput(LoRaData);
+        delay(3000);
+      }
     }
   }
 
-  Serial.println("Sleeping...");
-  // Put the ESP into deep sleep for 5 seconds
-  ESP.deepSleep(5000000);
+  // Put the ESP into deep sleep for a calculated duration
+  unsigned long endTime = millis();
+  unsigned long duration = endTime - startTime;
+  float durationSeconds = duration / 1000.0;
+
+  // Put the device to sleep for the calculated duration
+  sleep(durationSeconds);
+}
+
+void loop()
+{
+  delay(100);
 }
