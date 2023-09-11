@@ -20,12 +20,16 @@ RTC_DATA_ATTR int TxPower;
 RTC_DATA_ATTR long freq;
 RTC_DATA_ATTR double interval;
 
-// int SyncWord = 0xF1;
-// int TxPower = 20;
-// long freq = 923E6;
-// double interval = 0.1;
+// LoRa default configuration
+int defaultSyncWord = 0xF1;
+int defaultTxPower = 20;
+long defaultfreq = 923E6;
+double defaultinterval = 0.1;
+
 #define NodeName "Node1"
-#define timeout 10000
+
+// LoRa recv configuration
+#define timeout 0
 
 // Function to create a JSON string
 String createJsonString(float tempfl, float humifl)
@@ -143,16 +147,16 @@ void setup()
 
   if (SyncWord == 0 || TxPower == 0 || freq == 0 || interval == 0)
   {
-    SyncWord = 0xF1;
-    TxPower = 20;
-    freq = 923E6;
-    interval = 1;
+    SyncWord = defaultSyncWord;
+    TxPower = defaultTxPower;
+    freq = defaultfreq;
+    interval = defaultinterval;
     Serial.print("no value use default");
   }
 
   LoRa.setPins(ss, rst, dio0);
   LoRa.setSyncWord(241);
-  LoRa.setTxPower(TxPower); 
+  LoRa.setTxPower(TxPower);
   while (!LoRa.begin(freq))
   {
     Serial.println("Waiting for LoRa module...");
