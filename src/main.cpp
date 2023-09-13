@@ -136,7 +136,10 @@ void setup()
   aht_humidity = aht.getHumiditySensor();
 
   // Initialize LoRa module
-  Serial.print("LoRa");
+  Serial.println("\n------------------------");
+  Serial.println("LoRa configuration");
+  Serial.println("------------------------");
+  Serial.print("LoRa SyncWord: ");
   Serial.println(SyncWord, HEX); // Print SyncWord in hexadecimal format
   Serial.print("TxPower: ");
   Serial.println(TxPower);
@@ -151,7 +154,7 @@ void setup()
     TxPower = defaultTxPower;
     freq = defaultfreq;
     interval = defaultinterval;
-    Serial.print("no value use default");
+    Serial.println("no value use default");
   }
 
   LoRa.setPins(ss, rst, dio0);
@@ -162,7 +165,8 @@ void setup()
     Serial.println("Waiting for LoRa module...");
     delay(500);
   }
-  Serial.println("LoRa Initialized!");
+
+  Serial.println("\nLoRa Initialized!");
 
   // Get sensor readings
   sensors_event_t humidity;
