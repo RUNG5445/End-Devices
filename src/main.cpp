@@ -19,12 +19,15 @@ RTC_DATA_ATTR int SyncWord;
 RTC_DATA_ATTR int TxPower;
 RTC_DATA_ATTR long freq;
 RTC_DATA_ATTR double interval;
+RTC_DATA_ATTR int spreadingFactor;
+RTC_DATA_ATTR long signalBandwidth;
 
 // LoRa default configuration
 int defaultSyncWord = 0xF1;
 int defaultTxPower = 20;
 long defaultfreq = 923E6;
 double defaultinterval = 0.1;
+
 int defaultSpreadingFactor = 7;
 long defaultSignalBandwidth = 125E3;
 
@@ -137,16 +140,6 @@ void setup()
   aht_temp = aht.getTemperatureSensor();
   aht_humidity = aht.getHumiditySensor();
 
-  // Initialize LoRa module
-  Serial.print("LoRa");
-  Serial.println(SyncWord, HEX);
-  Serial.print("TxPower: ");
-  Serial.println(TxPower);
-  Serial.print("freq: ");
-  Serial.println(freq);
-  Serial.print("interval: ");
-  Serial.println(interval);
-
   if (SyncWord == 0 || TxPower == 0 || freq == 0 || interval == 0)
   {
     SyncWord = defaultSyncWord;
@@ -155,8 +148,22 @@ void setup()
     interval = defaultinterval;
     spreadingFactor = defaultSpreadingFactor;
     signalBandwidth = defaultSignalBandwidth;
-    Serial.print("no value use default");
+    Serial.println("No value use default");
   }
+
+  // Initialize LoRa module
+  Serial.print("LoRa");
+  Serial.println(SyncWord, HEX);
+  Serial.print("TxPower: ");
+  Serial.println(TxPower);
+  Serial.print("Frequency: ");
+  Serial.println(freq);
+  Serial.print("Interval: ");
+  Serial.println(interval);
+  Serial.print("SpreadingFactor: ");
+  Serial.println(spreadingFactor);
+  Serial.print("SignalBandwidth: ");
+  Serial.println(signalBandwidth);
 
   LoRa.setPins(ss, rst, dio0);
   while (!LoRa.begin(freq))
@@ -249,6 +256,5 @@ void setup()
 
 void loop()
 {
-  LoRa.setSpreadingFactor(12);
   delay(100);
 }
