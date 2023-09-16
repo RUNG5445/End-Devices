@@ -149,6 +149,18 @@ void setup()
     Serial.println("No value use default");
   }
 
+  LoRa.setPins(ss, rst, dio0);
+  while (!LoRa.begin(freq))
+  {
+    Serial.println("Waiting for LoRa module...");
+    delay(500);
+  }
+
+  LoRa.setTxPower(TxPower);
+  LoRa.setSyncWord(SyncWord);
+  LoRa.setSpreadingFactor(spreadingFactor);
+  LoRa.setSignalBandwidth(signalBandwidth);
+
   // Initialize LoRa module
   Serial.print("SyncWord: ");
   Serial.println(SyncWord, HEX);
@@ -163,17 +175,7 @@ void setup()
   Serial.print("SignalBandwidth: ");
   Serial.println(signalBandwidth);
 
-  LoRa.setPins(ss, rst, dio0);
-  while (!LoRa.begin(freq))
-  {
-    Serial.println("Waiting for LoRa module...");
-    delay(500);
-  }
   Serial.println("LoRa Initialized!");
-  LoRa.setTxPower(TxPower);
-  LoRa.setSyncWord(SyncWord);
-  LoRa.setSpreadingFactor(spreadingFactor);
-  LoRa.setSignalBandwidth(signalBandwidth);
 
   // Get sensor readings
   sensors_event_t humidity;
@@ -249,7 +251,8 @@ void setup()
   float durationSeconds = duration / 1000.0;
 
   // Put the device to sleep for the calculated duration
-  sleep(durationSeconds);
+  // sleep(durationSeconds);
+  esp_restart();
 }
 
 void loop()
