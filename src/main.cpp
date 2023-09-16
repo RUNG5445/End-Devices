@@ -12,7 +12,7 @@ Adafruit_Sensor *aht_humidity, *aht_temp;
 #define LED 26
 #define ss 5
 #define rst 17
-#define dio0 16
+#define dio0 12
 
 // LoRa configuration
 RTC_DATA_ATTR int SyncWord;
@@ -25,6 +25,8 @@ int defaultSyncWord = 0xF1;
 int defaultTxPower = 20;
 long defaultfreq = 923E6;
 double defaultinterval = 0.1;
+int defaultSpreadingFactor = 7;
+long defaultSignalBandwidth = 125E3;
 
 #define NodeName "Node1"
 
@@ -137,7 +139,7 @@ void setup()
 
   // Initialize LoRa module
   Serial.print("LoRa");
-  Serial.println(SyncWord, HEX); // Print SyncWord in hexadecimal format
+  Serial.println(SyncWord, HEX);
   Serial.print("TxPower: ");
   Serial.println(TxPower);
   Serial.print("freq: ");
@@ -151,18 +153,22 @@ void setup()
     TxPower = defaultTxPower;
     freq = defaultfreq;
     interval = defaultinterval;
+    spreadingFactor = defaultSpreadingFactor;
+    signalBandwidth = defaultSignalBandwidth;
     Serial.print("no value use default");
   }
 
   LoRa.setPins(ss, rst, dio0);
-  LoRa.setSyncWord(241);
-  LoRa.setTxPower(TxPower);
   while (!LoRa.begin(freq))
   {
     Serial.println("Waiting for LoRa module...");
     delay(500);
   }
   Serial.println("LoRa Initialized!");
+  LoRa.setTxPower(TxPower);
+  LoRa.setSyncWord(SyncWord);
+  LoRa.setSpreadingFactor(spreadingFactor);
+  LoRa.setSignalBandwidth(signalBandwidth);
 
   // Get sensor readings
   sensors_event_t humidity;
@@ -180,7 +186,7 @@ void setup()
   // Send JSON data via LoRa
   blinkLED(3, 300);
   LoRa.beginPacket();
-  LoRa.print(jsonOutput);
+  LoRa.print("0123456789123456789");
   LoRa.endPacket();
   delay(2000);
 
@@ -243,5 +249,6 @@ void setup()
 
 void loop()
 {
+  LoRa.setSpreadingFactor(12);
   delay(100);
 }
