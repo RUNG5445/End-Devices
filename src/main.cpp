@@ -1,5 +1,3 @@
-#include <Wire.h>
-#include <SPI.h>
 #include <ArduinoJson.h>
 #include <LoRa.h>
 #include <Adafruit_AHTX0.h>
@@ -152,7 +150,7 @@ void setup()
   }
 
   // Initialize LoRa module
-  Serial.print("LoRa");
+  Serial.print("SyncWord: ");
   Serial.println(SyncWord, HEX);
   Serial.print("TxPower: ");
   Serial.println(TxPower);
@@ -185,7 +183,7 @@ void setup()
   delay(100);
 
   // Create JSON string from sensor readings
-  delay(3000);
+  // delay(3000);
   String jsonOutput = createJsonString(temp.temperature, humidity.relative_humidity);
   Serial.print("Packet send: ");
   Serial.println(jsonOutput);
@@ -195,7 +193,7 @@ void setup()
   LoRa.beginPacket();
   LoRa.print("0123456789123456789");
   LoRa.endPacket();
-  delay(2000);
+  // delay(2000);
 
   Serial.println("Switching to receiving state...");
   LoRa.setSyncWord(0xF2);
