@@ -1,8 +1,9 @@
 {
-	"folders": [
-		{
-			"path": "."
-		}
-	],
-	"settings": {}
+  "folders": [
+    {
+      "name": "End-devices",
+      "path": "."
+    }
+  ],
+  "settings": {}
 }
