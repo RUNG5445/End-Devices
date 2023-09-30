@@ -27,13 +27,13 @@ long defaultfreq = 923E6;
 double defaultinterval = 0.1;
 int indexs = 0;
 
-int defaultSpreadingFactor = 8;
-long defaultSignalBandwidth = 250E3;
+int defaultSpreadingFactor = 9;
+long defaultSignalBandwidth = 125E3;
 
 #define NodeName "Node1"
 
 // LoRa recv configuration
-#define timeout 0
+#define timeout 10000
 
 // Function to create a JSON string
 String createJsonString(float tempfl, float humifl)
@@ -183,7 +183,7 @@ void setup()
 void loop()
 {
   // Get sensor readings
-
+  unsigned long startTime = millis();
   sensors_event_t humidity;
   sensors_event_t temp;
   aht_humidity->getEvent(&humidity);
@@ -202,7 +202,7 @@ void loop()
   // delay(5000);
 
   Serial.println("Switching to receiving state...");
-  LoRa.setSyncWord(0xF2);
+  LoRa.setSyncWord(0XF2);
   // Enter receiving state
   unsigned long recvstartTime = millis();
   while (millis() - recvstartTime < timeout)
@@ -239,6 +239,7 @@ void loop()
 
       Serial.print("' with RSSI ");
       Serial.println(LoRa.packetRssi());
+      blinkLED(5, 100);
 
       if (dataIndex > 0)
       {
@@ -250,12 +251,12 @@ void loop()
   }
 
   // Put the ESP into deep sleep for a calculated duration
-  // unsigned long endTime = millis();
-  // unsigned long duration = endTime - startTime;
-  // float durationSeconds = duration / 1000.0;
+  unsigned long endTime = millis();
+  unsigned long duration = endTime - startTime;
+  float durationSeconds = duration / 1000.0;
 
   // Put the device to sleep for the calculated duration
-  // sleep(durationSeconds);
+  sleep(durationSeconds);
   indexs = indexs + 1;
   delay(100);
 }
