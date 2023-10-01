@@ -35,7 +35,6 @@ long defaultSignalBandwidth = 125E3;
 // LoRa recv configuration
 #define timeout 10000
 
-// Function to create a JSON string
 String createJsonString(float tempfl, float humifl)
 {
   Serial.println("\n----------   Start of createJsonString()   ----------\n");
@@ -61,12 +60,10 @@ void sleep(float sec)
   // Set wakeup time
   esp_sleep_enable_timer_wakeup((interval - min_d) * 60 * 1000000);
 
-  // Print the duration in minutes to the serial monitor
   Serial.print("Duration: ");
   Serial.print(sec / 60);
   Serial.println(" minutes");
 
-  // Go to sleep now
   Serial.print("Going to sleep for ");
   Serial.print((interval - min_d));
   Serial.println(" minutes");
@@ -189,17 +186,18 @@ void loop()
   aht_humidity->getEvent(&humidity);
   aht_temp->getEvent(&temp);
   delay(100);
+
   // Create JSON string from sensor readings
   String jsonOutput = createJsonString(temp.temperature, humidity.relative_humidity);
   Serial.print("Packet send: ");
   String data = jsonOutput;
   Serial.println(data);
+
   // Send JSON data via LoRa
   blinkLED(3, 300);
   LoRa.beginPacket(0);
   LoRa.print(data);
   LoRa.endPacket();
-  // delay(5000);
 
   Serial.println("Switching to receiving state...");
   LoRa.setSyncWord(0XF2);
@@ -250,13 +248,12 @@ void loop()
     }
   }
 
-  // Put the ESP into deep sleep for a calculated duration
   unsigned long endTime = millis();
   unsigned long duration = endTime - startTime;
   float durationSeconds = duration / 1000.0;
 
-  // Put the device to sleep for the calculated duration
   sleep(durationSeconds);
   indexs = indexs + 1;
+
   delay(100);
 }
