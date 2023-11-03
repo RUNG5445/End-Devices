@@ -12,6 +12,11 @@ Adafruit_Sensor *aht_humidity, *aht_temp;
 #define rst 17
 #define dio0 12
 
+// Define End devices
+String enddeviceslist[] = {"Node1", "Node2"};
+const int enddevices_num = sizeof(enddeviceslist) / sizeof(enddeviceslist[0]);
+int node = 0;
+
 // LoRa configuration
 RTC_DATA_ATTR int SyncWord;
 RTC_DATA_ATTR int TxPower;
@@ -33,16 +38,16 @@ long defaultSignalBandwidth = 125E3;
 #define NodeName "Node1"
 
 // LoRa recv configuration
-#define timeout 10000
+#define timeout 15000
 
-String createJsonString(float tempfl, float humifl)
+String createJsonString(String Nodename, float tempfl, float humifl)
 {
   Serial.println("\n----------   Start of createJsonString()   ----------\n");
   StaticJsonDocument<512> doc;
 
   // Generate a random packet ID
   int randomPacketID = indexs;
-  doc["NodeName"] = NodeName;
+  doc["NodeName"] = Nodename;
   doc["PacketID"] = randomPacketID;
   doc["Temperature"] = round(tempfl * 100.00) / 100.00;
   doc["Humidity"] = round(humifl * 100.00) / 100.00;
@@ -121,6 +126,7 @@ void processJsonInput(const char *jsonInput)
 void setup()
 {
   Serial.begin(115200);
+  setCpuFrequencyMhz(80);
   pinMode(LED, OUTPUT);
   unsigned long startTime = millis();
 
@@ -175,30 +181,36 @@ void setup()
   Serial.println(signalBandwidth);
 
   Serial.println("LoRa Initialized!");
+
+  for (int i = 0; i < enddevices_num; i++)
+  {
+    delay(2000);
+    // Get sensor readings
+    sensors_event_t humidity;
+    sensors_event_t temp;
+    aht_humidity->getEvent(&humidity);
+    aht_temp->getEvent(&temp);
+    delay(100);
+
+    // Create JSON string from sensor readings
+    String jsonOutput = createJsonString(enddeviceslist[i], temp.temperature, humidity.relative_humidity);
+    Serial.print("Packet send: ");
+    String data = jsonOutput;
+    Serial.println(data);
+
+    // Send JSON data via LoRa
+    blinkLED(3, 300);
+    LoRa.beginPacket();
+    LoRa.print(data);
+    LoRa.endPacket();
+    Serial.print(millis());
+  }
 }
 
 void loop()
 {
-  // Get sensor readings
+
   unsigned long startTime = millis();
-  sensors_event_t humidity;
-  sensors_event_t temp;
-  aht_humidity->getEvent(&humidity);
-  aht_temp->getEvent(&temp);
-  delay(100);
-
-  // Create JSON string from sensor readings
-  String jsonOutput = createJsonString(temp.temperature, humidity.relative_humidity);
-  Serial.print("Packet send: ");
-  String data = jsonOutput;
-  Serial.println(data);
-
-  // Send JSON data via LoRa
-  blinkLED(3, 300);
-  LoRa.beginPacket(0);
-  LoRa.print(data);
-  LoRa.endPacket();
-
   Serial.println("Switching to receiving state...");
   LoRa.setSyncWord(0XF2);
   // Enter receiving state
@@ -254,6 +266,4 @@ void loop()
 
   sleep(durationSeconds);
   indexs = indexs + 1;
-
-  delay(100);
 }
