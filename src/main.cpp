@@ -30,10 +30,9 @@ int defaultSyncWord = 0xF1;
 int defaultTxPower = 20;
 long defaultfreq = 923E6;
 double defaultinterval = 0.1;
-int indexs = 0;
-
 int defaultSpreadingFactor = 9;
 long defaultSignalBandwidth = 125E3;
+int indexs = 0;
 
 #define NodeName "Node1"
 
@@ -62,6 +61,7 @@ void sleep(float sec)
 {
   Serial.println("\n----------   Start of sleep()   ----------\n");
   double min_d = sec / 60;
+  
   // Set wakeup time
   esp_sleep_enable_timer_wakeup((interval - min_d) * 60 * 1000000);
 
@@ -184,7 +184,8 @@ void setup()
 
   for (int i = 0; i < enddevices_num; i++)
   {
-    delay(2000);
+    delay(1000);
+
     // Get sensor readings
     sensors_event_t humidity;
     sensors_event_t temp;
@@ -213,6 +214,7 @@ void loop()
   unsigned long startTime = millis();
   Serial.println("Switching to receiving state...");
   LoRa.setSyncWord(0XF2);
+  
   // Enter receiving state
   unsigned long recvstartTime = millis();
   while (millis() - recvstartTime < timeout)
