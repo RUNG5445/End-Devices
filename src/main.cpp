@@ -13,7 +13,7 @@ Adafruit_Sensor *aht_humidity, *aht_temp;
 #define dio0 12
 
 // Define End devices
-String enddeviceslist[] = {"Node1", "Node2"};
+String enddeviceslist[] = {"Node1", "Node2", "Node3", "Node4", "Node5"};
 const int enddevices_num = sizeof(enddeviceslist) / sizeof(enddeviceslist[0]);
 int node = 0;
 
@@ -45,7 +45,7 @@ String createJsonString(String Nodename, float tempfl, float humifl)
   StaticJsonDocument<512> doc;
 
   // Generate a random packet ID
-  int randomPacketID = indexs;
+  int randomPacketID = random(99999, 1000000);
   doc["NodeName"] = Nodename;
   doc["PacketID"] = randomPacketID;
   doc["Temperature"] = round(tempfl * 100.00) / 100.00;
@@ -61,7 +61,7 @@ void sleep(float sec)
 {
   Serial.println("\n----------   Start of sleep()   ----------\n");
   double min_d = sec / 60;
-  
+
   // Set wakeup time
   esp_sleep_enable_timer_wakeup((interval - min_d) * 60 * 1000000);
 
@@ -214,7 +214,7 @@ void loop()
   unsigned long startTime = millis();
   Serial.println("Switching to receiving state...");
   LoRa.setSyncWord(0XF2);
-  
+
   // Enter receiving state
   unsigned long recvstartTime = millis();
   while (millis() - recvstartTime < timeout)
