@@ -1,251 +1,254 @@
-#include <Wire.h>
+/*******************************************************************************
+ * Copyright (c) 2015 Thomas Telkamp and Matthijs Kooijman
+ * Copyright (c) 2018 Terry Moore, MCCI
+ *
+ * Permission is hereby granted, free of charge, to anyone
+ * obtaining a copy of this document and accompanying files,
+ * to do whatever they want with them without any restriction,
+ * including, but not limited to, copying, modification and redistribution.
+ * NO WARRANTY OF ANY KIND IS PROVIDED.
+ *
+ * This example sends a valid LoRaWAN packet with payload "Hello,
+ * world!", using frequency and encryption settings matching those of
+ * the The Things Network.
+ *
+ * This uses OTAA (Over-the-air activation), where where a DevEUI and
+ * application key is configured, which are used in an over-the-air
+ * activation procedure where a DevAddr and session keys are
+ * assigned/generated for use with all further communication.
+ *
+ * Note: LoRaWAN per sub-band duty-cycle limitation is enforced (1% in
+ * g1, 0.1% in g2), but not the TTN fair usage policy (which is probably
+ * violated by this sketch when left running for longer)!
+
+ * To use this sketch, first register your application and device with
+ * the things network, to set or generate an AppEUI, DevEUI and AppKey.
+ * Multiple devices can use the same AppEUI, but each device has its own
+ * DevEUI and AppKey.
+ *
+ * Do not forget to define the radio type correctly in
+ * arduino-lmic/project_config/lmic_project_config.h or from your BOARDS.txt.
+ *
+ *******************************************************************************/
+#include <Arduino.h>
+#include <lmic.h>
+#include <hal/hal.h>
 #include <SPI.h>
-#include <ArduinoJson.h>
-#include <LoRa.h>
-#include <Adafruit_AHTX0.h>
 
-// Create instances of sensors
-Adafruit_AHTX0 aht;
-Adafruit_Sensor *aht_humidity, *aht_temp;
+//
+// For normal use, we require that you edit the sketch to replace FILLMEIN
+// with values assigned by the TTN console. However, for regression tests,
+// we want to be able to compile these scripts. The regression tests define
+// COMPILE_REGRESSION_TEST, and in that case we define FILLMEIN to a non-
+// working but innocuous value.
+//
+#ifdef COMPILE_REGRESSION_TEST
+#define FILLMEIN 0
+#else
+// # warning "You must replace the values marked FILLMEIN with real values from the TTN control panel!"
+#define FILLMEIN (#dont edit this, edit the lines that use FILLMEIN)
+#endif
 
-// Pin definitions
-#define LED 26
-#define ss 5
-#define rst 17
-#define dio0 16
+static const u1_t PROGMEM APPEUI[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+void os_getArtEui(u1_t *buf) { memcpy_P(buf, APPEUI, 8); }
 
-// LoRa configuration
-RTC_DATA_ATTR int SyncWord;
-RTC_DATA_ATTR int TxPower;
-RTC_DATA_ATTR long freq;
-RTC_DATA_ATTR double interval;
+// This should also be in little endian format, see above.
+static const u1_t PROGMEM DEVEUI[8] = {0x52, 0x35, 0x06, 0xD0, 0x7E, 0xD5, 0xB3, 0x70};
+void os_getDevEui(u1_t *buf) { memcpy_P(buf, DEVEUI, 8); }
 
-// LoRa default configuration
-int defaultSyncWord = 0xF1;
-int defaultTxPower = 20;
-long defaultfreq = 923E6;
-double defaultinterval = 0.1;
+// This key should be in big endian format (or, since it is not really a
+// number but a block of memory, endianness does not really apply). In
+// practice, a key taken from ttnctl can be copied as-is.
+static const u1_t PROGMEM APPKEY[16] = {0xA9, 0x82, 0x81, 0x58, 0xE3, 0xE3, 0xD1, 0xC5, 0x2C, 0x78, 0xF1, 0xF1, 0x53, 0x47, 0xDF, 0xAE};
+void os_getDevKey(u1_t *buf) { memcpy_P(buf, APPKEY, 16); }
 
-#define NodeName "Node1"
+static uint8_t mydata[] = "Hello, world!";
+static osjob_t sendjob;
 
-// LoRa recv configuration
-#define timeout 0
+// Schedule TX every this many seconds (might become longer due to duty
+// cycle limitations).
+const unsigned TX_INTERVAL = 10;
 
-// Function to create a JSON string
-String createJsonString(float tempfl, float humifl)
+// Pin mapping
+const lmic_pinmap lmic_pins = {
+    .nss = 5,
+    .rxtx = LMIC_UNUSED_PIN,
+    .rst = 4,
+    .dio = {2, 15, 22},
+};
+
+void printHex2(unsigned v)
 {
-  Serial.println("\n----------   Start of createJsonString()   ----------\n");
-  StaticJsonDocument<512> doc;
-
-  // Generate a random packet ID
-  int randomPacketID = random(99999, 1000000); // Generates a number between 99999 and 999999
-  doc["NodeName"] = NodeName;
-  doc["PacketID"] = randomPacketID;
-  doc["Temperature"] = round(tempfl * 100.00) / 100.00;
-  doc["Humidity"] = round(humifl * 100.00) / 100.00;
-
-  String jsonString;
-  serializeJson(doc, jsonString);
-  Serial.println("\n----------   End of createJsonString()   ----------\n");
-  return jsonString;
+  v &= 0xff;
+  if (v < 16)
+    Serial.print('0');
+  Serial.print(v, HEX);
 }
 
-void sleep(float sec)
+void do_send(osjob_t *j)
 {
-  Serial.println("\n----------   Start of sleep()   ----------\n");
-  double min_d = sec / 60;
-  // Set wakeup time
-  esp_sleep_enable_timer_wakeup((interval - min_d) * 60 * 1000000);
-
-  // Print the duration in minutes to the serial monitor
-  Serial.print("Duration: ");
-  Serial.print(sec / 60);
-  Serial.println(" minutes");
-
-  // Go to sleep now
-  Serial.print("Going to sleep for ");
-  Serial.print((interval - min_d));
-  Serial.println(" minutes");
-  Serial.println("\n----------   End of sleep()   ----------\n");
-  esp_deep_sleep_start();
+  // Check if there is not a current TX/RX job running
+  if (LMIC.opmode & OP_TXRXPEND)
+  {
+    Serial.println(F("OP_TXRXPEND, not sending"));
+  }
+  else
+  {
+    // Prepare upstream data transmission at the next possible time.
+    LMIC_setTxData2(1, mydata, sizeof(mydata) - 1, 0);
+    Serial.println(F("Packet queued"));
+  }
+  // Next TX is scheduled after TX_COMPLETE event.
 }
 
-void blinkLED(int numBlinks, int blinkDuration = 500)
+void onEvent(ev_t ev)
 {
-  Serial.println("\n----------   Start of blinkLED()   ----------\n");
-  Serial.println("LED blinking...");
-  for (int i = 0; i < numBlinks; i++)
+  Serial.print(os_getTime());
+  Serial.print(": ");
+  switch (ev)
   {
-    digitalWrite(LED, HIGH);
-    delay(blinkDuration);
-    digitalWrite(LED, LOW);
-    delay(blinkDuration);
-  }
-  Serial.println("\n----------   End of blinkLED()   ----------\n");
-}
+  case EV_SCAN_TIMEOUT:
+    Serial.println(F("EV_SCAN_TIMEOUT"));
+    break;
+  case EV_BEACON_FOUND:
+    Serial.println(F("EV_BEACON_FOUND"));
+    break;
+  case EV_BEACON_MISSED:
+    Serial.println(F("EV_BEACON_MISSED"));
+    break;
+  case EV_BEACON_TRACKED:
+    Serial.println(F("EV_BEACON_TRACKED"));
+    break;
+  case EV_JOINING:
+    Serial.println(F("EV_JOINING"));
+    break;
+  case EV_JOINED:
+    Serial.println(F("EV_JOINED"));
+    {
+      u4_t netid = 0;
+      devaddr_t devaddr = 0;
+      u1_t nwkKey[16];
+      u1_t artKey[16];
+      LMIC_getSessionKeys(&netid, &devaddr, nwkKey, artKey);
+      Serial.print("netid: ");
+      Serial.println(netid, DEC);
+      Serial.print("devaddr: ");
+      Serial.println(devaddr, HEX);
+      Serial.print("AppSKey: ");
+      for (size_t i = 0; i < sizeof(artKey); ++i)
+      {
+        if (i != 0)
+          Serial.print("-");
+        printHex2(artKey[i]);
+      }
+      Serial.println("");
+      Serial.print("NwkSKey: ");
+      for (size_t i = 0; i < sizeof(nwkKey); ++i)
+      {
+        if (i != 0)
+          Serial.print("-");
+        printHex2(nwkKey[i]);
+      }
+      Serial.println();
+    }
+    // Disable link check validation (automatically enabled
+    // during join, but because slow data rates change max TX
+    // size, we don't use it in this example.
+    LMIC_setLinkCheckMode(0);
+    break;
+  /*
+  || This event is defined but not used in the code. No
+  || point in wasting codespace on it.
+  ||
+  || case EV_RFU1:
+  ||     Serial.println(F("EV_RFU1"));
+  ||     break;
+  */
+  case EV_JOIN_FAILED:
+    Serial.println(F("EV_JOIN_FAILED"));
+    break;
+  case EV_REJOIN_FAILED:
+    Serial.println(F("EV_REJOIN_FAILED"));
+    break;
+  case EV_TXCOMPLETE:
+    Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
+    if (LMIC.txrxFlags & TXRX_ACK)
+      Serial.println(F("Received ack"));
+    if (LMIC.dataLen)
+    {
+      Serial.print(F("Received "));
+      Serial.print(LMIC.dataLen);
+      Serial.println(F(" bytes of payload"));
+    }
+    // Schedule next transmission
+    os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
+    break;
+  case EV_LOST_TSYNC:
+    Serial.println(F("EV_LOST_TSYNC"));
+    break;
+  case EV_RESET:
+    Serial.println(F("EV_RESET"));
+    break;
+  case EV_RXCOMPLETE:
+    // data received in ping slot
+    Serial.println(F("EV_RXCOMPLETE"));
+    break;
+  case EV_LINK_DEAD:
+    Serial.println(F("EV_LINK_DEAD"));
+    break;
+  case EV_LINK_ALIVE:
+    Serial.println(F("EV_LINK_ALIVE"));
+    break;
+  /*
+  || This event is defined but not used in the code. No
+  || point in wasting codespace on it.
+  ||
+  || case EV_SCAN_FOUND:
+  ||    Serial.println(F("EV_SCAN_FOUND"));
+  ||    break;
+  */
+  case EV_TXSTART:
+    Serial.println(F("EV_TXSTART"));
+    break;
+  case EV_TXCANCELED:
+    Serial.println(F("EV_TXCANCELED"));
+    break;
+  case EV_RXSTART:
+    /* do not print anything -- it wrecks timing */
+    break;
+  case EV_JOIN_TXCOMPLETE:
+    Serial.println(F("EV_JOIN_TXCOMPLETE: no JoinAccept"));
+    break;
 
-void processJsonInput(const char *jsonInput)
-{
-  StaticJsonDocument<512> doc;
-  DeserializationError error = deserializeJson(doc, jsonInput);
-  if (error)
-  {
-    Serial.print("Parsing failed: ");
-    Serial.println(error.c_str());
-    return;
-  }
-
-  if (doc["SyncWord"] != SyncWord)
-  {
-    SyncWord = doc["SyncWord"];
-    Serial.print("SyncWord changed");
-  }
-  if (doc["TxPower"] != TxPower)
-  {
-    TxPower = doc["TxPower"];
-    Serial.print("TxPower changed");
-  }
-  if (doc["freq"] != freq)
-  {
-    freq = doc["freq"];
-    Serial.print("TxPower changed");
-  }
-  if (doc["interval"] != interval)
-  {
-    interval = doc["interval"];
-    Serial.print("interval changed");
+  default:
+    Serial.print(F("Unknown event: "));
+    Serial.println((unsigned)ev);
+    break;
   }
 }
 
 void setup()
 {
-  Serial.begin(115200);
-  pinMode(LED, OUTPUT);
-  unsigned long startTime = millis();
+  Serial.begin(9600);
+  Serial.println(F("Starting"));
 
-  // Initialize AHT sensor
-  while (!aht.begin())
-  {
-    Serial.println("Failed to find AHT10/AHT20 chip");
-    delay(10);
-  }
-  Serial.println("AHT10/AHT20 Initialized!");
-  delay(200);
+#ifdef VCC_ENABLE
+  // For Pinoccio Scout boards
+  pinMode(VCC_ENABLE, OUTPUT);
+  digitalWrite(VCC_ENABLE, HIGH);
+  delay(1000);
+#endif
 
-  aht_temp = aht.getTemperatureSensor();
-  aht_humidity = aht.getHumiditySensor();
+  // LMIC init
+  os_init();
+  // Reset the MAC state. Session and pending data transfers will be discarded.
+  LMIC_reset();
 
-  // Initialize LoRa module
-  Serial.println("\n------------------------");
-  Serial.println("LoRa configuration");
-  Serial.println("------------------------");
-  Serial.print("LoRa SyncWord: ");
-  Serial.println(SyncWord, HEX); // Print SyncWord in hexadecimal format
-  Serial.print("TxPower: ");
-  Serial.println(TxPower);
-  Serial.print("freq: ");
-  Serial.println(freq);
-  Serial.print("interval: ");
-  Serial.println(interval);
-
-  if (SyncWord == 0 || TxPower == 0 || freq == 0 || interval == 0)
-  {
-    SyncWord = defaultSyncWord;
-    TxPower = defaultTxPower;
-    freq = defaultfreq;
-    interval = defaultinterval;
-    Serial.println("no value use default");
-  }
-
-  LoRa.setPins(ss, rst, dio0);
-  LoRa.setSyncWord(241);
-  LoRa.setTxPower(TxPower);
-  while (!LoRa.begin(freq))
-  {
-    Serial.println("Waiting for LoRa module...");
-    delay(500);
-  }
-
-  Serial.println("\nLoRa Initialized!");
-
-  // Get sensor readings
-  sensors_event_t humidity;
-  sensors_event_t temp;
-  aht_humidity->getEvent(&humidity);
-  aht_temp->getEvent(&temp);
-  delay(100);
-
-  // Create JSON string from sensor readings
-  delay(3000);
-  String jsonOutput = createJsonString(temp.temperature, humidity.relative_humidity);
-  Serial.print("Packet send: ");
-  Serial.println(jsonOutput);
-
-  // Send JSON data via LoRa
-  blinkLED(3, 300);
-  LoRa.beginPacket();
-  LoRa.print(jsonOutput);
-  LoRa.endPacket();
-  delay(2000);
-
-  Serial.println("Switching to receiving state...");
-  LoRa.setSyncWord(0xF2);
-  // Enter receiving state
-  unsigned long recvstartTime = millis();
-  while (millis() - recvstartTime < timeout)
-  {
-
-    int packetSize = LoRa.parsePacket();
-    if (packetSize)
-    {
-      Serial.print("Received packet '");
-
-      char LoRaData[255];
-      int dataIndex = 0;
-
-      while (LoRa.available())
-      {
-        char receivedChar = LoRa.read();
-        Serial.print(receivedChar);
-
-        LoRaData[dataIndex] = receivedChar;
-        dataIndex++;
-
-        if (dataIndex >= sizeof(LoRaData) - 1)
-        {
-          LoRaData[dataIndex] = '\0';
-          break;
-        }
-
-        if (dataIndex == 1 && receivedChar != '{')
-        {
-          dataIndex = 0;
-          break;
-        }
-      }
-
-      Serial.print("' with RSSI ");
-      Serial.println(LoRa.packetRssi());
-
-      if (dataIndex > 0)
-      {
-        LoRaData[dataIndex] = '\0';
-        processJsonInput(LoRaData);
-        delay(3000);
-      }
-    }
-  }
-
-  // Put the ESP into deep sleep for a calculated duration
-  unsigned long endTime = millis();
-  unsigned long duration = endTime - startTime;
-  float durationSeconds = duration / 1000.0;
-
-  // Put the device to sleep for the calculated duration
-  sleep(durationSeconds);
+  // Start job (sending automatically starts OTAA too)
+  do_send(&sendjob);
 }
 
 void loop()
 {
-  delay(100);
+  os_runloop_once();
 }
