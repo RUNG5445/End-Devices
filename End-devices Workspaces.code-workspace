@@ -13,7 +13,8 @@
       "unordered_set": "cpp",
       "vector": "cpp",
       "string_view": "cpp",
-      "initializer_list": "cpp"
+      "initializer_list": "cpp",
+      "functional": "c"
     }
   }
 }

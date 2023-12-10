@@ -25,35 +25,32 @@
 static const Arduino_LMIC::HalPinmap_t *plmic_pins;
 static Arduino_LMIC::HalConfiguration_t *pHalConfig;
 static Arduino_LMIC::HalConfiguration_t nullHalConig;
-static hal_failure_handler_t *custom_hal_failure_handler = NULL;
+static hal_failure_handler_t* custom_hal_failure_handler = NULL;
 
 static void hal_interrupt_init(); // Fwd declaration
 
-static void hal_io_init()
-{
+static void hal_io_init () {
     // NSS and DIO0 are required, DIO1 is required for LoRa, DIO2 for FSK
     ASSERT(plmic_pins->nss != LMIC_UNUSED_PIN);
     ASSERT(plmic_pins->dio[0] != LMIC_UNUSED_PIN);
     ASSERT(plmic_pins->dio[1] != LMIC_UNUSED_PIN || plmic_pins->dio[2] != LMIC_UNUSED_PIN);
 
-    //    Serial.print("nss: "); Serial.println(plmic_pins->nss);
-    //    Serial.print("rst: "); Serial.println(plmic_pins->rst);
-    //    Serial.print("dio[0]: "); Serial.println(plmic_pins->dio[0]);
-    //    Serial.print("dio[1]: "); Serial.println(plmic_pins->dio[1]);
-    //    Serial.print("dio[2]: "); Serial.println(plmic_pins->dio[2]);
+//    Serial.print("nss: "); Serial.println(plmic_pins->nss);
+//    Serial.print("rst: "); Serial.println(plmic_pins->rst);
+//    Serial.print("dio[0]: "); Serial.println(plmic_pins->dio[0]);
+//    Serial.print("dio[1]: "); Serial.println(plmic_pins->dio[1]);
+//    Serial.print("dio[2]: "); Serial.println(plmic_pins->dio[2]);
 
     // initialize SPI chip select to high (it's active low)
     digitalWrite(plmic_pins->nss, HIGH);
     pinMode(plmic_pins->nss, OUTPUT);
 
-    if (plmic_pins->rxtx != LMIC_UNUSED_PIN)
-    {
+    if (plmic_pins->rxtx != LMIC_UNUSED_PIN) {
         // initialize to RX
         digitalWrite(plmic_pins->rxtx, LOW != plmic_pins->rxtx_rx_active);
         pinMode(plmic_pins->rxtx, OUTPUT);
     }
-    if (plmic_pins->rst != LMIC_UNUSED_PIN)
-    {
+    if (plmic_pins->rst != LMIC_UNUSED_PIN) {
         // initialize RST to floating
         pinMode(plmic_pins->rst, INPUT);
     }
@@ -62,31 +59,25 @@ static void hal_io_init()
 }
 
 // val == 1  => tx
-void hal_pin_rxtx(u1_t val)
-{
+void hal_pin_rxtx (u1_t val) {
     if (plmic_pins->rxtx != LMIC_UNUSED_PIN)
         digitalWrite(plmic_pins->rxtx, val != plmic_pins->rxtx_rx_active);
 }
 
 // set radio RST pin to given value (or keep floating!)
-void hal_pin_rst(u1_t val)
-{
+void hal_pin_rst (u1_t val) {
     if (plmic_pins->rst == LMIC_UNUSED_PIN)
         return;
 
-    if (val == 0 || val == 1)
-    { // drive pin
+    if(val == 0 || val == 1) { // drive pin
         digitalWrite(plmic_pins->rst, val);
         pinMode(plmic_pins->rst, OUTPUT);
-    }
-    else
-    { // keep pin floating
+    } else { // keep pin floating
         pinMode(plmic_pins->rst, INPUT);
     }
 }
 
-s1_t hal_getRssiCal(void)
-{
+s1_t hal_getRssiCal (void) {
     return plmic_pins->rssi_cal;
 }
 
@@ -98,8 +89,7 @@ static_assert(NUM_DIO_INTERRUPT <= NUM_DIO, "Number of interrupt-sensitive lines
 static ostime_t interrupt_time[NUM_DIO_INTERRUPT] = {0};
 
 #if !defined(LMIC_USE_INTERRUPTS)
-static void hal_interrupt_init()
-{
+static void hal_interrupt_init() {
     pinMode(plmic_pins->dio[0], INPUT);
     if (plmic_pins->dio[1] != LMIC_UNUSED_PIN)
         pinMode(plmic_pins->dio[1], INPUT);
@@ -109,19 +99,15 @@ static void hal_interrupt_init()
 }
 
 static bool dio_states[NUM_DIO_INTERRUPT] = {0};
-void hal_pollPendingIRQs_helper()
-{
+void hal_pollPendingIRQs_helper() {
     uint8_t i;
-    for (i = 0; i < NUM_DIO_INTERRUPT; ++i)
-    {
+    for (i = 0; i < NUM_DIO_INTERRUPT; ++i) {
         if (plmic_pins->dio[i] == LMIC_UNUSED_PIN)
             continue;
 
-        if (dio_states[i] != digitalRead(plmic_pins->dio[i]))
-        {
+        if (dio_states[i] != digitalRead(plmic_pins->dio[i])) {
             dio_states[i] = !dio_states[i];
-            if (dio_states[i] && interrupt_time[i] == 0)
-            {
+            if (dio_states[i] && interrupt_time[i] == 0) {
                 ostime_t const now = os_getTime();
                 interrupt_time[i] = now ? now : 1;
             }
@@ -132,26 +118,20 @@ void hal_pollPendingIRQs_helper()
 #else
 // Interrupt handlers
 
-static void hal_isrPin0()
-{
-    if (interrupt_time[0] == 0)
-    {
+static void hal_isrPin0() {
+    if (interrupt_time[0] == 0) {
         ostime_t now = os_getTime();
         interrupt_time[0] = now ? now : 1;
     }
 }
-static void hal_isrPin1()
-{
-    if (interrupt_time[1] == 0)
-    {
+static void hal_isrPin1() {
+    if (interrupt_time[1] == 0) {
         ostime_t now = os_getTime();
         interrupt_time[1] = now ? now : 1;
     }
 }
-static void hal_isrPin2()
-{
-    if (interrupt_time[2] == 0)
-    {
+static void hal_isrPin2() {
+    if (interrupt_time[2] == 0) {
         ostime_t now = os_getTime();
         interrupt_time[2] = now ? now : 1;
     }
@@ -161,24 +141,20 @@ typedef void (*isr_t)();
 static const isr_t interrupt_fns[NUM_DIO_INTERRUPT] = {hal_isrPin0, hal_isrPin1, hal_isrPin2};
 static_assert(NUM_DIO_INTERRUPT == 3, "number of interrupts must be 3 for initializing interrupt_fns[]");
 
-static void hal_interrupt_init()
-{
-    for (uint8_t i = 0; i < NUM_DIO_INTERRUPT; ++i)
-    {
-        if (plmic_pins->dio[i] == LMIC_UNUSED_PIN)
-            continue;
+static void hal_interrupt_init() {
+  for (uint8_t i = 0; i < NUM_DIO_INTERRUPT; ++i) {
+      if (plmic_pins->dio[i] == LMIC_UNUSED_PIN)
+          continue;
 
-        pinMode(plmic_pins->dio[i], INPUT);
-        attachInterrupt(digitalPinToInterrupt(plmic_pins->dio[i]), interrupt_fns[i], RISING);
-    }
+      pinMode(plmic_pins->dio[i], INPUT);
+      attachInterrupt(digitalPinToInterrupt(plmic_pins->dio[i]), interrupt_fns[i], RISING);
+  }
 }
 #endif // LMIC_USE_INTERRUPTS
 
-void hal_processPendingIRQs()
-{
+void hal_processPendingIRQs() {
     uint8_t i;
-    for (i = 0; i < NUM_DIO_INTERRUPT; ++i)
-    {
+    for (i = 0; i < NUM_DIO_INTERRUPT; ++i) {
         ostime_t iTime;
         if (plmic_pins->dio[i] == LMIC_UNUSED_PIN)
             continue;
@@ -194,8 +170,7 @@ void hal_processPendingIRQs()
         // use case, as the radio won't release IRQs until we
         // explicitly clear them.
         iTime = interrupt_time[i];
-        if (iTime)
-        {
+        if (iTime) {
             interrupt_time[i] = 0;
             radio_irq_handler_v2(i, iTime);
         }
@@ -205,13 +180,11 @@ void hal_processPendingIRQs()
 // -----------------------------------------------------------------------------
 // SPI
 
-static void hal_spi_init()
-{
+static void hal_spi_init () {
     SPI.begin();
 }
 
-static void hal_spi_trx(u1_t cmd, u1_t *buf, size_t len, bit_t is_read)
-{
+static void hal_spi_trx(u1_t cmd, u1_t* buf, size_t len, bit_t is_read) {
     uint32_t spi_freq;
     u1_t nss = plmic_pins->nss;
 
@@ -224,8 +197,7 @@ static void hal_spi_trx(u1_t cmd, u1_t *buf, size_t len, bit_t is_read)
 
     SPI.transfer(cmd);
 
-    for (; len > 0; --len, ++buf)
-    {
+    for (; len > 0; --len, ++buf) {
         u1_t data = is_read ? 0x00 : *buf;
         data = SPI.transfer(data);
         if (is_read)
@@ -236,26 +208,22 @@ static void hal_spi_trx(u1_t cmd, u1_t *buf, size_t len, bit_t is_read)
     SPI.endTransaction();
 }
 
-void hal_spi_write(u1_t cmd, const u1_t *buf, size_t len)
-{
-    hal_spi_trx(cmd, (u1_t *)buf, len, 0);
+void hal_spi_write(u1_t cmd, const u1_t* buf, size_t len) {
+    hal_spi_trx(cmd, (u1_t*)buf, len, 0);
 }
 
-void hal_spi_read(u1_t cmd, u1_t *buf, size_t len)
-{
+void hal_spi_read(u1_t cmd, u1_t* buf, size_t len) {
     hal_spi_trx(cmd, buf, len, 1);
 }
 
 // -----------------------------------------------------------------------------
 // TIME
 
-static void hal_time_init()
-{
+static void hal_time_init () {
     // Nothing to do
 }
 
-u4_t hal_ticks()
-{
+u4_t hal_ticks () {
     // Because micros() is scaled down in this function, micros() will
     // overflow before the tick timer should, causing the tick timer to
     // miss a significant part of its values if not corrected. To fix
@@ -302,22 +270,20 @@ u4_t hal_ticks()
 
 // Returns the number of ticks until time. Negative values indicate that
 // time has already passed.
-static s4_t delta_time(u4_t time)
-{
+static s4_t delta_time(u4_t time) {
     return (s4_t)(time - hal_ticks());
 }
 
 // deal with boards that are stressed by no-interrupt delays #529, etc.
 #if defined(ARDUINO_DISCO_L072CZ_LRWAN1)
-#define HAL_WAITUNTIL_DOWNCOUNT_MS 16                 // on this board, 16 ms works better
-#define HAL_WAITUNTIL_DOWNCOUNT_THRESH ms2osticks(16) // as does this threashold.
+# define HAL_WAITUNTIL_DOWNCOUNT_MS 16      // on this board, 16 ms works better
+# define HAL_WAITUNTIL_DOWNCOUNT_THRESH ms2osticks(16)  // as does this threashold.
 #else
-#define HAL_WAITUNTIL_DOWNCOUNT_MS 8                 // on most boards, delay for 8 ms
-#define HAL_WAITUNTIL_DOWNCOUNT_THRESH ms2osticks(9) // but try to leave a little slack for final timing.
+# define HAL_WAITUNTIL_DOWNCOUNT_MS 8       // on most boards, delay for 8 ms
+# define HAL_WAITUNTIL_DOWNCOUNT_THRESH ms2osticks(9) // but try to leave a little slack for final timing.
 #endif
 
-u4_t hal_waitUntil(u4_t time)
-{
+u4_t hal_waitUntil (u4_t time) {
     s4_t delta = delta_time(time);
     // check for already too late.
     if (delta < 0)
@@ -327,8 +293,7 @@ u4_t hal_waitUntil(u4_t time)
     // will produce an accurate delay is 16383. Also, STM32 does a better
     // job with delay is less than 10,000 us; so reduce in steps.
     // It's nice to use delay() for the longer times.
-    while (delta > HAL_WAITUNTIL_DOWNCOUNT_THRESH)
-    {
+    while (delta > HAL_WAITUNTIL_DOWNCOUNT_THRESH) {
         // deliberately delay 8ms rather than 9ms, so we
         // will exit loop with delta typically positive.
         // Depends on BSP keeping time accurately even if interrupts
@@ -340,7 +305,7 @@ u4_t hal_waitUntil(u4_t time)
 
     // The radio driver runs with interrupt disabled, and this can
     // mess up timing APIs on some platforms. If we know the BSP feature
-    // set, we can decide whether to use delta_time() [more exact,
+    // set, we can decide whether to use delta_time() [more exact, 
     // but not always possible with interrupts off], or fall back to
     // delay_microseconds() [less exact, but more universal]
 
@@ -350,7 +315,7 @@ u4_t hal_waitUntil(u4_t time)
     // so spin using delta_time().
     while (delta_time(time) > 0)
         /* loop */;
-#else  // ! defined(_mcci_arduino_version)
+#else // ! defined(_mcci_arduino_version)
     // on other BSPs, we need to stick with the older way,
     // until we fix the radio driver to run with interrupts
     // enabled.
@@ -364,24 +329,20 @@ u4_t hal_waitUntil(u4_t time)
 }
 
 // check and rewind for target time
-u1_t hal_checkTimer(u4_t time)
-{
+u1_t hal_checkTimer (u4_t time) {
     // No need to schedule wakeup, since we're not sleeping
     return delta_time(time) <= 0;
 }
 
 static uint8_t irqlevel = 0;
 
-void hal_disableIRQs()
-{
+void hal_disableIRQs () {
     noInterrupts();
     irqlevel++;
 }
 
-void hal_enableIRQs()
-{
-    if (--irqlevel == 0)
-    {
+void hal_enableIRQs () {
+    if(--irqlevel == 0) {
         interrupts();
 
 #if !defined(LMIC_USE_INTERRUPTS)
@@ -400,13 +361,11 @@ void hal_enableIRQs()
     }
 }
 
-uint8_t hal_getIrqLevel(void)
-{
+uint8_t hal_getIrqLevel(void) {
     return irqlevel;
 }
 
-void hal_sleep()
-{
+void hal_sleep () {
     // Not implemented
 }
 
@@ -414,106 +373,98 @@ void hal_sleep()
 
 #if defined(LMIC_PRINTF_TO)
 #if !defined(__AVR)
-static ssize_t uart_putchar(void *, const char *buf, size_t len)
-{
+static ssize_t uart_putchar (void *, const char *buf, size_t len) {
     return LMIC_PRINTF_TO.write((const uint8_t *)buf, len);
 }
 
 static cookie_io_functions_t functions =
-    {
-        .read = NULL,
-        .write = uart_putchar,
-        .seek = NULL,
-        .close = NULL};
+ {
+     .read = NULL,
+     .write = uart_putchar,
+     .seek = NULL,
+     .close = NULL
+ };
 
-void hal_printf_init()
-{
+void hal_printf_init() {
     stdout = fopencookie(NULL, "w", functions);
-    if (stdout != nullptr)
-    {
+    if (stdout != nullptr) {
         setvbuf(stdout, NULL, _IONBF, 0);
     }
 }
 #else // defined(__AVR)
-static int uart_putchar(char c, FILE *)
+static int uart_putchar (char c, FILE *)
 {
-    LMIC_PRINTF_TO.write(c);
-    return 0;
+    LMIC_PRINTF_TO.write(c) ;
+    return 0 ;
 }
 
-void hal_printf_init()
-{
+void hal_printf_init() {
     // create a FILE structure to reference our UART output function
     static FILE uartout;
     memset(&uartout, 0, sizeof(uartout));
 
     // fill in the UART file descriptor with pointer to writer.
-    fdev_setup_stream(&uartout, uart_putchar, NULL, _FDEV_SETUP_WRITE);
+    fdev_setup_stream (&uartout, uart_putchar, NULL, _FDEV_SETUP_WRITE);
 
     // The uart is the standard output device STDOUT.
-    stdout = &uartout;
+    stdout = &uartout ;
 }
 
 #endif // !defined(ESP8266) || defined(ESP31B) || defined(ESP32)
 #endif // defined(LMIC_PRINTF_TO)
 
-void hal_init(void)
-{
+void hal_init (void) {
     // use the global constant
     Arduino_LMIC::hal_init_with_pinmap(&lmic_pins);
 }
 
 // hal_init_ex is a C API routine, written in C++, and it's called
 // with a pointer to an lmic_pinmap.
-void hal_init_ex(const void *pContext)
-{
-    const lmic_pinmap *const pHalPinmap = (const lmic_pinmap *)pContext;
-    if (!Arduino_LMIC::hal_init_with_pinmap(pHalPinmap))
-    {
+void hal_init_ex (const void *pContext) {
+    const lmic_pinmap * const pHalPinmap = (const lmic_pinmap *) pContext;
+    if (! Arduino_LMIC::hal_init_with_pinmap(pHalPinmap)) {
         hal_failed(__FILE__, __LINE__);
     }
 }
 
 // C++ API: initialize the HAL properly with a configuration object
-namespace Arduino_LMIC
-{
-    bool hal_init_with_pinmap(const HalPinmap_t *pPinmap)
+namespace Arduino_LMIC {
+bool hal_init_with_pinmap(const HalPinmap_t *pPinmap)
     {
-        if (pPinmap == nullptr)
-            return false;
+    if (pPinmap == nullptr)
+        return false;
 
-        // set the static pinmap pointer.
-        plmic_pins = pPinmap;
+    // set the static pinmap pointer.
+    plmic_pins = pPinmap;
 
-        // set the static HalConfiguration pointer.
-        HalConfiguration_t *const pThisHalConfig = pPinmap->pConfig;
+    // set the static HalConfiguration pointer.
+    HalConfiguration_t * const pThisHalConfig = pPinmap->pConfig;
 
-        if (pThisHalConfig != nullptr)
-            pHalConfig = pThisHalConfig;
-        else
-            pHalConfig = &nullHalConig;
+    if (pThisHalConfig != nullptr)
+        pHalConfig = pThisHalConfig;
+    else
+        pHalConfig = &nullHalConig;
 
-        pHalConfig->begin();
+    pHalConfig->begin();
 
-        // configure radio I/O and interrupt handler
-        hal_io_init();
-        // configure radio SPI
-        hal_spi_init();
-        // configure timer and interrupt handler
-        hal_time_init();
+    // configure radio I/O and interrupt handler
+    hal_io_init();
+    // configure radio SPI
+    hal_spi_init();
+    // configure timer and interrupt handler
+    hal_time_init();
 #if defined(LMIC_PRINTF_TO)
-        // printf support
-        hal_printf_init();
+    // printf support
+    hal_printf_init();
 #endif
-        // declare success
-        return true;
+    // declare success
+    return true;
     }
 }; // namespace Arduino_LMIC
 
-void hal_failed(const char *file, u2_t line)
-{
-    if (custom_hal_failure_handler != NULL)
-    {
+
+void hal_failed (const char *file, u2_t line) {
+    if (custom_hal_failure_handler != NULL) {
         (*custom_hal_failure_handler)(file, line);
     }
 
@@ -528,37 +479,34 @@ void hal_failed(const char *file, u2_t line)
     hal_disableIRQs();
 
     // Infinite loop
-    while (1)
-    {
+    while (1) {
         ;
     }
 }
 
-void hal_set_failure_handler(const hal_failure_handler_t *const handler)
-{
+void hal_set_failure_handler(const hal_failure_handler_t* const handler) {
     custom_hal_failure_handler = handler;
 }
 
-ostime_t hal_setModuleActive(bit_t val)
-{
+ostime_t hal_setModuleActive (bit_t val) {
     // setModuleActive() takes a c++ bool, so
     // it effectively says "val != 0". We
     // don't have to.
     return pHalConfig->setModuleActive(val);
 }
 
-bit_t hal_queryUsingTcxo(void)
-{
+bit_t hal_queryUsingTcxo(void) {
     return pHalConfig->queryUsingTcxo();
 }
 
 uint8_t hal_getTxPowerPolicy(
     u1_t inputPolicy,
     s1_t requestedPower,
-    u4_t frequency)
-{
-    return (uint8_t)pHalConfig->getTxPowerPolicy(
-        Arduino_LMIC::HalConfiguration_t::TxPowerPolicy_t(inputPolicy),
-        requestedPower,
-        frequency);
+    u4_t frequency
+    ) {
+    return (uint8_t) pHalConfig->getTxPowerPolicy(
+                        Arduino_LMIC::HalConfiguration_t::TxPowerPolicy_t(inputPolicy),
+                        requestedPower,
+                        frequency
+                        );
 }

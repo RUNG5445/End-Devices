@@ -12,24 +12,27 @@
  * world!", using frequency and encryption settings matching those of
  * the The Things Network.
  *
- * This uses OTAA (Over-the-air activation), where where a DevEUI and
- * application key is configured, which are used in an over-the-air
- * activation procedure where a DevAddr and session keys are
- * assigned/generated for use with all further communication.
+ * This uses ABP (Activation-by-personalisation), where a DevAddr and
+ * Session keys are preconfigured (unlike OTAA, where a DevEUI and
+ * application key is configured, while the DevAddr and session keys are
+ * assigned/generated in the over-the-air-activation procedure).
  *
  * Note: LoRaWAN per sub-band duty-cycle limitation is enforced (1% in
  * g1, 0.1% in g2), but not the TTN fair usage policy (which is probably
  * violated by this sketch when left running for longer)!
-
+ *
  * To use this sketch, first register your application and device with
- * the things network, to set or generate an AppEUI, DevEUI and AppKey.
- * Multiple devices can use the same AppEUI, but each device has its own
- * DevEUI and AppKey.
+ * the things network, to set or generate a DevAddr, NwkSKey and
+ * AppSKey. Each device should have their own unique values for these
+ * fields.
  *
  * Do not forget to define the radio type correctly in
  * arduino-lmic/project_config/lmic_project_config.h or from your BOARDS.txt.
  *
  *******************************************************************************/
+
+// References:
+// [feather] adafruit-feather-m0-radio-with-lora-module.pdf
 #include <Arduino.h>
 #include <lmic.h>
 #include <hal/hal.h>
@@ -45,22 +48,30 @@
 #ifdef COMPILE_REGRESSION_TEST
 #define FILLMEIN 0
 #else
-// # warning "You must replace the values marked FILLMEIN with real values from the TTN control panel!"
+#warning "You must replace the values marked FILLMEIN with real values from the TTN control panel!"
 #define FILLMEIN (#dont edit this, edit the lines that use FILLMEIN)
 #endif
 
-static const u1_t PROGMEM APPEUI[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-void os_getArtEui(u1_t *buf) { memcpy_P(buf, APPEUI, 8); }
+// LoRaWAN NwkSKey, network session key
+// This should be in big-endian (aka msb).
+static const PROGMEM u1_t NWKSKEY[16] = {0x61, 0x62, 0xC0, 0xCC, 0xED, 0x16, 0x71, 0x48, 0x1B, 0x07, 0x8C, 0xA0, 0x60, 0xE1, 0x0F, 0xDB};
 
-// This should also be in little endian format, see above.
-static const u1_t PROGMEM DEVEUI[8] = {0x52, 0x35, 0x06, 0xD0, 0x7E, 0xD5, 0xB3, 0x70};
-void os_getDevEui(u1_t *buf) { memcpy_P(buf, DEVEUI, 8); }
+// LoRaWAN AppSKey, application session key
+// This should also be in big-endian (aka msb).
+static const u1_t PROGMEM APPSKEY[16] = {0x7D, 0x38, 0xB4, 0x28, 0x5D, 0x18, 0x25, 0x59, 0x8F, 0x9E, 0xB6, 0x34, 0xCF, 0x34, 0xF2, 0x5C};
 
-// This key should be in big endian format (or, since it is not really a
-// number but a block of memory, endianness does not really apply). In
-// practice, a key taken from ttnctl can be copied as-is.
-static const u1_t PROGMEM APPKEY[16] = {0xA9, 0x82, 0x81, 0x58, 0xE3, 0xE3, 0xD1, 0xC5, 0x2C, 0x78, 0xF1, 0xF1, 0x53, 0x47, 0xDF, 0xAE};
-void os_getDevKey(u1_t *buf) { memcpy_P(buf, APPKEY, 16); }
+// LoRaWAN end-device address (DevAddr)
+// See http://thethingsnetwork.org/wiki/AddressSpace
+// The library converts the address to network byte order as needed, so this should be in big-endian (aka msb) too.
+static const u4_t DEVADDR = 0x01a93b7c; // <-- Change this address for every node!
+
+// These callbacks are only used in over-the-air activation, so they are
+// left empty here (we cannot leave them out completely unless
+// DISABLE_JOIN is set in arduino-lmic/project_config/lmic_project_config.h,
+// otherwise the linker will complain).
+void os_getArtEui(u1_t *buf) {}
+void os_getDevEui(u1_t *buf) {}
+void os_getDevKey(u1_t *buf) {}
 
 static uint8_t mydata[] = "Hello, world!";
 static osjob_t sendjob;
@@ -70,21 +81,14 @@ static osjob_t sendjob;
 const unsigned TX_INTERVAL = 10;
 
 // Pin mapping
+// Adapted for Feather M0 per p.10 of [feather]
+// Pin mapping
 const lmic_pinmap lmic_pins = {
     .nss = 5,
     .rxtx = LMIC_UNUSED_PIN,
     .rst = 4,
-    .dio = {2, 15, 22},
+    .dio = {34, 35, LMIC_UNUSED_PIN},
 };
-
-void printHex2(unsigned v)
-{
-  v &= 0xff;
-  if (v < 16)
-    Serial.print('0');
-  Serial.print(v, HEX);
-}
-
 void do_send(osjob_t *j)
 {
   // Check if there is not a current TX/RX job running
@@ -124,37 +128,6 @@ void onEvent(ev_t ev)
     break;
   case EV_JOINED:
     Serial.println(F("EV_JOINED"));
-    {
-      u4_t netid = 0;
-      devaddr_t devaddr = 0;
-      u1_t nwkKey[16];
-      u1_t artKey[16];
-      LMIC_getSessionKeys(&netid, &devaddr, nwkKey, artKey);
-      Serial.print("netid: ");
-      Serial.println(netid, DEC);
-      Serial.print("devaddr: ");
-      Serial.println(devaddr, HEX);
-      Serial.print("AppSKey: ");
-      for (size_t i = 0; i < sizeof(artKey); ++i)
-      {
-        if (i != 0)
-          Serial.print("-");
-        printHex2(artKey[i]);
-      }
-      Serial.println("");
-      Serial.print("NwkSKey: ");
-      for (size_t i = 0; i < sizeof(nwkKey); ++i)
-      {
-        if (i != 0)
-          Serial.print("-");
-        printHex2(nwkKey[i]);
-      }
-      Serial.println();
-    }
-    // Disable link check validation (automatically enabled
-    // during join, but because slow data rates change max TX
-    // size, we don't use it in this example.
-    LMIC_setLinkCheckMode(0);
     break;
   /*
   || This event is defined but not used in the code. No
@@ -176,8 +149,8 @@ void onEvent(ev_t ev)
       Serial.println(F("Received ack"));
     if (LMIC.dataLen)
     {
-      Serial.print(F("Received "));
-      Serial.print(LMIC.dataLen);
+      Serial.println(F("Received "));
+      Serial.println(LMIC.dataLen);
       Serial.println(F(" bytes of payload"));
     }
     // Schedule next transmission
@@ -219,7 +192,6 @@ void onEvent(ev_t ev)
   case EV_JOIN_TXCOMPLETE:
     Serial.println(F("EV_JOIN_TXCOMPLETE: no JoinAccept"));
     break;
-
   default:
     Serial.print(F("Unknown event: "));
     Serial.println((unsigned)ev);
@@ -230,6 +202,7 @@ void onEvent(ev_t ev)
 void setup()
 {
   Serial.begin(9600);
+  delay(100); // per sample code on RF_95 test
   Serial.println(F("Starting"));
 
 #ifdef VCC_ENABLE
@@ -244,11 +217,105 @@ void setup()
   // Reset the MAC state. Session and pending data transfers will be discarded.
   LMIC_reset();
 
-  // Start job (sending automatically starts OTAA too)
+// Set static session parameters. Instead of dynamically establishing a session
+// by joining the network, precomputed session parameters are be provided.
+#ifdef PROGMEM
+  // On AVR, these values are stored in flash and only copied to RAM
+  // once. Copy them to a temporary buffer here, LMIC_setSession will
+  // copy them into a buffer of its own again.
+  uint8_t appskey[sizeof(APPSKEY)];
+  uint8_t nwkskey[sizeof(NWKSKEY)];
+  memcpy_P(appskey, APPSKEY, sizeof(APPSKEY));
+  memcpy_P(nwkskey, NWKSKEY, sizeof(NWKSKEY));
+  LMIC_setSession(0x13, DEVADDR, nwkskey, appskey);
+#else
+  // If not running an AVR with PROGMEM, just use the arrays directly
+  LMIC_setSession(0x13, DEVADDR, NWKSKEY, APPSKEY);
+#endif
+
+#if defined(CFG_eu868)
+  // Set up the channels used by the Things Network, which corresponds
+  // to the defaults of most gateways. Without this, only three base
+  // channels from the LoRaWAN specification are used, which certainly
+  // works, so it is good for debugging, but can overload those
+  // frequencies, so be sure to configure the full frequency range of
+  // your network here (unless your network autoconfigures them).
+  // Setting up channels should happen after LMIC_setSession, as that
+  // configures the minimal channel set. The LMIC doesn't let you change
+  // the three basic settings, but we show them here.
+  LMIC_setupChannel(0, 868100000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+  LMIC_setupChannel(1, 868300000, DR_RANGE_MAP(DR_SF12, DR_SF7B), BAND_CENTI); // g-band
+  LMIC_setupChannel(2, 868500000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+  LMIC_setupChannel(3, 867100000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+  LMIC_setupChannel(4, 867300000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+  LMIC_setupChannel(5, 867500000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+  LMIC_setupChannel(6, 867700000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+  LMIC_setupChannel(7, 867900000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);  // g-band
+  LMIC_setupChannel(8, 868800000, DR_RANGE_MAP(DR_FSK, DR_FSK), BAND_MILLI);   // g2-band
+// TTN defines an additional channel at 869.525Mhz using SF9 for class B
+// devices' ping slots. LMIC does not have an easy way to define set this
+// frequency and support for class B is spotty and untested, so this
+// frequency is not configured here.
+#elif defined(CFG_us915) || defined(CFG_au915)
+  // NA-US and AU channels 0-71 are configured automatically
+  // but only one group of 8 should (a subband) should be active
+  // TTN recommends the second sub band, 1 in a zero based count.
+  // https://github.com/TheThingsNetwork/gateway-conf/blob/master/US-global_conf.json
+  LMIC_selectSubBand(1);
+#elif defined(CFG_as923)
+  // Set up the channels used in your country. Only two are defined by default,
+  // and they cannot be changed.  Use BAND_CENTI to indicate 1% duty cycle.
+  LMIC_setupChannel(0, 923200000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);
+  LMIC_setupChannel(1, 923400000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);
+
+// ... extra definitions for channels 2..n here
+#elif defined(CFG_kr920)
+// Set up the channels used in your country. Three are defined by default,
+// and they cannot be changed. Duty cycle doesn't matter, but is conventionally
+// BAND_MILLI.
+// LMIC_setupChannel(0, 922100000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_MILLI);
+// LMIC_setupChannel(1, 922300000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_MILLI);
+// LMIC_setupChannel(2, 922500000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_MILLI);
+
+// ... extra definitions for channels 3..n here.
+#elif defined(CFG_in866)
+// Set up the channels used in your country. Three are defined by default,
+// and they cannot be changed. Duty cycle doesn't matter, but is conventionally
+// BAND_MILLI.
+// LMIC_setupChannel(0, 865062500, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_MILLI);
+// LMIC_setupChannel(1, 865402500, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_MILLI);
+// LMIC_setupChannel(2, 865985000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_MILLI);
+
+// ... extra definitions for channels 3..n here.
+#else
+#error Region not supported
+#endif
+
+  // Disable link check validation
+  LMIC_setLinkCheckMode(0);
+
+  // TTN uses SF9 for its RX2 window.
+  LMIC.dn2Dr = DR_SF9;
+
+  // Set data rate and transmit power for uplink
+  LMIC_setDrTxpow(DR_SF7, 14);
+
+  // Start job
   do_send(&sendjob);
 }
 
 void loop()
 {
+  unsigned long now;
+  now = millis();
+  if ((now & 512) != 0)
+  {
+    digitalWrite(13, HIGH);
+  }
+  else
+  {
+    digitalWrite(13, LOW);
+  }
+
   os_runloop_once();
 }
