@@ -54,16 +54,16 @@
 
 // LoRaWAN NwkSKey, network session key
 // This should be in big-endian (aka msb).
-static const PROGMEM u1_t NWKSKEY[16] = {0x61, 0x62, 0xC0, 0xCC, 0xED, 0x16, 0x71, 0x48, 0x1B, 0x07, 0x8C, 0xA0, 0x60, 0xE1, 0x0F, 0xDB};
+static const PROGMEM u1_t NWKSKEY[16] = {0x40, 0x25, 0x6B, 0xA8, 0xFB, 0x26, 0xB3, 0xC3, 0x0A, 0xE6, 0x8F, 0x41, 0x83, 0x0F, 0x4C, 0x50};
 
 // LoRaWAN AppSKey, application session key
 // This should also be in big-endian (aka msb).
-static const u1_t PROGMEM APPSKEY[16] = {0x7D, 0x38, 0xB4, 0x28, 0x5D, 0x18, 0x25, 0x59, 0x8F, 0x9E, 0xB6, 0x34, 0xCF, 0x34, 0xF2, 0x5C};
+static const u1_t PROGMEM APPSKEY[16] = {0xB5, 0xCD, 0xE7, 0x84, 0xA2, 0x12, 0x64, 0x0B, 0xA8, 0xEE, 0x27, 0x1C, 0x59, 0xD2, 0x98, 0xE5};
 
 // LoRaWAN end-device address (DevAddr)
 // See http://thethingsnetwork.org/wiki/AddressSpace
 // The library converts the address to network byte order as needed, so this should be in big-endian (aka msb) too.
-static const u4_t DEVADDR = 0x01a93b7c; // <-- Change this address for every node!
+static const u4_t DEVADDR = 0x00e5dbaa; // <-- Change this address for every node!
 
 // These callbacks are only used in over-the-air activation, so they are
 // left empty here (we cannot leave them out completely unless
@@ -78,7 +78,7 @@ static osjob_t sendjob;
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
-const unsigned TX_INTERVAL = 10;
+const unsigned TX_INTERVAL = 30;
 
 // Pin mapping
 // Adapted for Feather M0 per p.10 of [feather]
@@ -87,7 +87,7 @@ const lmic_pinmap lmic_pins = {
     .nss = 5,
     .rxtx = LMIC_UNUSED_PIN,
     .rst = 4,
-    .dio = {34, 35, LMIC_UNUSED_PIN},
+    .dio = {2, 15, LMIC_UNUSED_PIN},
 };
 void do_send(osjob_t *j)
 {
@@ -266,7 +266,6 @@ void setup()
   // Set up the channels used in your country. Only two are defined by default,
   // and they cannot be changed.  Use BAND_CENTI to indicate 1% duty cycle.
   LMIC_setupChannel(0, 923200000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);
-  LMIC_setupChannel(1, 923400000, DR_RANGE_MAP(DR_SF12, DR_SF7), BAND_CENTI);
 
 // ... extra definitions for channels 2..n here
 #elif defined(CFG_kr920)
@@ -292,10 +291,10 @@ void setup()
 #endif
 
   // Disable link check validation
-  LMIC_setLinkCheckMode(0);
+  LMIC_setLinkCheckMode(1);
 
   // TTN uses SF9 for its RX2 window.
-  LMIC.dn2Dr = DR_SF9;
+  // LMIC.dn2Dr = DR_SF9;
 
   // Set data rate and transmit power for uplink
   LMIC_setDrTxpow(DR_SF7, 14);
