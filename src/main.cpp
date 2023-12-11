@@ -153,7 +153,7 @@ void setup()
     Serial.println("No value use default");
   }
 
-  LoRa.setPins(ss, rst, dio0);
+  LoRa.setPins(ss, 4, 34);
   while (!LoRa.begin(freq))
   {
     Serial.println("Waiting for LoRa module...");
