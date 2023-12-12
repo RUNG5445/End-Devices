@@ -47,7 +47,7 @@ char jsonOutput[bufferSize] = {};
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
-const unsigned TX_INTERVAL = 10;
+const unsigned TX_INTERVAL = 60;
 
 // Pin mapping
 // Adapted for Feather M0 per p.10 of [feather]
