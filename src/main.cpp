@@ -1,42 +1,19 @@
-/*******************************************************************************
- * Copyright (c) 2015 Thomas Telkamp and Matthijs Kooijman
- * Copyright (c) 2018 Terry Moore, MCCI
- *
- * Permission is hereby granted, free of charge, to anyone
- * obtaining a copy of this document and accompanying files,
- * to do whatever they want with them without any restriction,
- * including, but not limited to, copying, modification and redistribution.
- * NO WARRANTY OF ANY KIND IS PROVIDED.
- *
- * This example sends a valid LoRaWAN packet with payload "Hello,
- * world!", using frequency and encryption settings matching those of
- * the The Things Network.
- *
- * This uses ABP (Activation-by-personalisation), where a DevAddr and
- * Session keys are preconfigured (unlike OTAA, where a DevEUI and
- * application key is configured, while the DevAddr and session keys are
- * assigned/generated in the over-the-air-activation procedure).
- *
- * Note: LoRaWAN per sub-band duty-cycle limitation is enforced (1% in
- * g1, 0.1% in g2), but not the TTN fair usage policy (which is probably
- * violated by this sketch when left running for longer)!
- *
- * To use this sketch, first register your application and device with
- * the things network, to set or generate a DevAddr, NwkSKey and
- * AppSKey. Each device should have their own unique values for these
- * fields.
- *
- * Do not forget to define the radio type correctly in
- * arduino-lmic/project_config/lmic_project_config.h or from your BOARDS.txt.
- *
- *******************************************************************************/
+
 
 // References:
 // [feather] adafruit-feather-m0-radio-with-lora-module.pdf
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <lmic.h>
 #include <hal/hal.h>
 #include <SPI.h>
+#include <Adafruit_AHTX0.h>
+#include <CayenneLPP.h>
+
+// Create instances of sensors
+Adafruit_AHTX0 aht;
+Adafruit_Sensor *aht_humidity, *aht_temp;
+CayenneLPP lpp(51);
 
 //
 // For normal use, we require that you edit the sketch to replace FILLMEIN
@@ -45,12 +22,6 @@
 // COMPILE_REGRESSION_TEST, and in that case we define FILLMEIN to a non-
 // working but innocuous value.
 //
-#ifdef COMPILE_REGRESSION_TEST
-#define FILLMEIN 0
-#else
-#warning "You must replace the values marked FILLMEIN with real values from the TTN control panel!"
-#define FILLMEIN (#dont edit this, edit the lines that use FILLMEIN)
-#endif
 
 // LoRaWAN NwkSKey, network session key
 // This should be in big-endian (aka msb).
@@ -60,25 +31,23 @@ static const PROGMEM u1_t NWKSKEY[16] = {0x40, 0x25, 0x6B, 0xA8, 0xFB, 0x26, 0xB
 // This should also be in big-endian (aka msb).
 static const u1_t PROGMEM APPSKEY[16] = {0xB5, 0xCD, 0xE7, 0x84, 0xA2, 0x12, 0x64, 0x0B, 0xA8, 0xEE, 0x27, 0x1C, 0x59, 0xD2, 0x98, 0xE5};
 
-// LoRaWAN end-device address (DevAddr)
-// See http://thethingsnetwork.org/wiki/AddressSpace
-// The library converts the address to network byte order as needed, so this should be in big-endian (aka msb) too.
-static const u4_t DEVADDR = 0x00e5dbaa; // <-- Change this address for every node!
-
-// These callbacks are only used in over-the-air activation, so they are
-// left empty here (we cannot leave them out completely unless
-// DISABLE_JOIN is set in arduino-lmic/project_config/lmic_project_config.h,
-// otherwise the linker will complain).
 void os_getArtEui(u1_t *buf) {}
 void os_getDevEui(u1_t *buf) {}
 void os_getDevKey(u1_t *buf) {}
 
-static uint8_t mydata[] = "Hello, world!";
+// LoRaWAN end-device address (DevAddr)
+// See http://thethingsnetwork.org/wiki/AddressSpace
+// The library converts the address to network byte order as needed, so this should be in big-endian (aka msb) too.
+static const u4_t DEVADDR = 0x00f89395; // <-- Change this address for every node!
+
 static osjob_t sendjob;
+uint8_t mydata[] = "";
+const size_t bufferSize = 512;
+char jsonOutput[bufferSize] = {};
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
-const unsigned TX_INTERVAL = 30;
+const unsigned TX_INTERVAL = 10;
 
 // Pin mapping
 // Adapted for Feather M0 per p.10 of [feather]
@@ -87,22 +56,61 @@ const lmic_pinmap lmic_pins = {
     .nss = 5,
     .rxtx = LMIC_UNUSED_PIN,
     .rst = 4,
-    .dio = {2, 15, LMIC_UNUSED_PIN},
+    .dio = {34, 35, LMIC_UNUSED_PIN},
 };
+
+void createJsonString(String Nodename, float tempfl, float humifl, char *jsonOutput, size_t bufferSize)
+{
+  Serial.println("\n----------   Start of createJsonString()   ----------\n");
+  StaticJsonDocument<512> doc;
+
+  // Generate a random packet ID
+  int randomPacketID = random(99999, 1000000);
+  doc["NodeName"] = Nodename;
+  doc["PacketID"] = randomPacketID;
+  doc["Temperature"] = round(tempfl * 100.00) / 100.00;
+  doc["Humidity"] = round(humifl * 100.00) / 100.00;
+
+  serializeJson(doc, jsonOutput, bufferSize);
+  Serial.println("\n----------   End of createJsonString()   ----------\n");
+}
+
 void do_send(osjob_t *j)
 {
   // Check if there is not a current TX/RX job running
+
   if (LMIC.opmode & OP_TXRXPEND)
   {
     Serial.println(F("OP_TXRXPEND, not sending"));
   }
   else
   {
+    // Initialize AHT sensor
+    while (!aht.begin())
+    {
+      Serial.println("Failed to find AHT10/AHT20 chip");
+      delay(10);
+    }
+    Serial.println("AHT10/AHT20 Initialized!");
+    delay(200);
+
+    aht_temp = aht.getTemperatureSensor();
+    aht_humidity = aht.getHumiditySensor();
+    // Get sensor readings
+    sensors_event_t humidity;
+    sensors_event_t temp;
+    aht_humidity->getEvent(&humidity);
+    aht_temp->getEvent(&temp);
+    lpp.reset();
+    lpp.addTemperature(2, temp.temperature);
+    lpp.addRelativeHumidity(3, humidity.relative_humidity);
+    // lpp.addBarometricPressure(4, pa/1000);
+    // lpp.addAnalogInput(5, alt);
+
     // Prepare upstream data transmission at the next possible time.
-    LMIC_setTxData2(1, mydata, sizeof(mydata) - 1, 0);
+    LMIC_setTxData2(2, lpp.getBuffer(), lpp.getSize(), 0);
     Serial.println(F("Packet queued"));
   }
-  // Next TX is scheduled after TX_COMPLETE event.
 }
 
 void onEvent(ev_t ev)
@@ -154,6 +162,7 @@ void onEvent(ev_t ev)
       Serial.println(F(" bytes of payload"));
     }
     // Schedule next transmission
+    Serial.println(DEVADDR);
     os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
     break;
   case EV_LOST_TSYNC:
@@ -204,6 +213,8 @@ void setup()
   Serial.begin(9600);
   delay(100); // per sample code on RF_95 test
   Serial.println(F("Starting"));
+  // pinMode(LED, OUTPUT);
+  unsigned long startTime = millis();
 
 #ifdef VCC_ENABLE
   // For Pinoccio Scout boards
@@ -227,7 +238,7 @@ void setup()
   uint8_t nwkskey[sizeof(NWKSKEY)];
   memcpy_P(appskey, APPSKEY, sizeof(APPSKEY));
   memcpy_P(nwkskey, NWKSKEY, sizeof(NWKSKEY));
-  LMIC_setSession(0x13, DEVADDR, nwkskey, appskey);
+  LMIC_setSession(0x1, DEVADDR, nwkskey, appskey);
 #else
   // If not running an AVR with PROGMEM, just use the arrays directly
   LMIC_setSession(0x13, DEVADDR, NWKSKEY, APPSKEY);
@@ -301,6 +312,7 @@ void setup()
 
   // Start job
   do_send(&sendjob);
+  pinMode(26,OUTPUT);
 }
 
 void loop()
@@ -309,12 +321,13 @@ void loop()
   now = millis();
   if ((now & 512) != 0)
   {
-    digitalWrite(13, HIGH);
+    digitalWrite(26, HIGH);
   }
   else
   {
-    digitalWrite(13, LOW);
+    digitalWrite(26, LOW);
   }
 
   os_runloop_once();
 }
+
