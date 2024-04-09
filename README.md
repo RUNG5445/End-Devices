@@ -38,6 +38,11 @@ This Arduino project utilizes LoRa communication to create a sensor node that me
 - Adjust LoRa settings and sensor readings as necessary.
 - Customize the code for additional functionality or sensor integration.
 
+## Authors
+
+- [Rungrueng Janrueng](https://github.com/RUNG5445)
+
 ## License
+
 This project is licensed under the [MIT License](LICENSE).
 
